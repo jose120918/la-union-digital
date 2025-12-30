@@ -10,7 +10,7 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_aprobar_pago', array( $this, 'procesar_aprobacion' ) );
         add_action( 'admin_post_lud_rechazar_pago', array( $this, 'procesar_rechazo' ) );
         add_action( 'admin_post_lud_aprobar_desembolso', array( $this, 'procesar_desembolso' ) );
-        add_action( 'admin_post_lud_cierre_mensual', array( $this, 'ejecutar_cierre_mensual_manual' ) );
+        // Nota: El cierre mensual ahora es automático, no requiere hook de botón manual
         add_action( 'admin_post_lud_liquidacion_anual', array( $this, 'procesar_liquidacion_anual' ) );
     }
 
@@ -23,6 +23,10 @@ class LUD_Admin_Tesoreria {
      * ENRUTADOR DE VISTAS
      */
     public function router_views() {
+        // --- AUTOMATIZACIÓN: CIERRE MENSUAL ---
+        // Se ejecuta silenciosamente al cargar el dashboard si detecta que falta cerrar el mes anterior.
+        $this->verificar_cierre_automatico();
+
         $view = isset($_GET['view']) ? $_GET['view'] : 'dashboard';
         
         echo '<div class="wrap">';
@@ -30,10 +34,12 @@ class LUD_Admin_Tesoreria {
         
         $active_dash = ($view == 'dashboard') ? 'nav-tab-active' : '';
         $active_socio = ($view == 'buscar_socio' || $view == 'detalle_socio') ? 'nav-tab-active' : '';
+        $active_hist = ($view == 'historial_intereses') ? 'nav-tab-active' : '';
         
         echo '<nav class="nav-tab-wrapper">';
-        echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'" title="Ayuda: Aquí ves el dinero total, apruebas pagos y desembolsas créditos.">📊 Tablero Principal</a>';
+        echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'" title="Ayuda: Aquí ves el dinero total en caja, apruebas pagos y desembolsas créditos.">📊 Tablero Principal</a>';
         echo '<a href="?page=lud-tesoreria&view=buscar_socio" class="nav-tab '.$active_socio.'" title="Ayuda: Aquí buscas a un socio para ver su historia completa.">👥 Directorio y Consultas</a>';
+        echo '<a href="?page=lud-tesoreria&view=historial_intereses" class="nav-tab '.$active_hist.'" title="Ayuda: Lista de los dineros entregados en efectivo cada Diciembre.">📜 Historial Intereses Pagados</a>';
         echo '</nav>';
         echo '<br>';
 
@@ -43,6 +49,8 @@ class LUD_Admin_Tesoreria {
             $this->render_buscador_socios();
         } elseif ( $view == 'detalle_socio' ) {
             $this->render_hoja_vida_socio();
+        } elseif ( $view == 'historial_intereses' ) {
+            $this->render_historial_intereses();
         }
         echo '</div>';
     }
@@ -55,11 +63,18 @@ class LUD_Admin_Tesoreria {
         // SEGURIDAD: Definir si el usuario puede editar (Tesorero/Admin/Presidente)
         $puede_editar = current_user_can('lud_manage_tesoreria');
 
-        // 1. CÁLCULOS
+        // 1. CÁLCULOS DE CAJA (Dinero Físico Real)
+        // Entradas
         $total_entradas = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle");
+        // Salidas Operativas
         $total_gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos");
+        // Salidas por Créditos
         $total_prestado = $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'pagado', 'mora')");
-        $dinero_fisico = floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado);
+        // Salidas por Pago de Intereses (Liquidación Diciembre)
+        // Al liquidar, el dinero sale de la caja para entregarse al socio. Debemos restarlo.
+        $total_intereses_pagados = $wpdb->get_var("SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado'");
+
+        $dinero_fisico = floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado) - floatval($total_intereses_pagados);
 
         $recaudo_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria'");
         $gasto_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria'");
@@ -99,32 +114,32 @@ class LUD_Admin_Tesoreria {
         </div>
 
         <?php if ( $puede_editar ): ?>
-        <div class="lud-card" style="border-left: 5px solid #e67e22; margin-bottom:30px;">
-            <h3 title="AYUDA: Herramientas para fin de mes.">⚙️ Acciones Administrativas</h3>
-            <div style="display:flex; gap:10px;">
-                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Ejecutar cálculo de utilidades de este mes?');">
-                    <input type="hidden" name="action" value="lud_cierre_mensual">
-                    <button class="button button-large" title="AYUDA: Presiona este botón el último día del mes. El sistema calculará cuánto ganó cada socio este mes.">
-                        📅 Ejecutar Cierre Mensual
-                    </button>
-                </form>
-                
-                <?php if(date('m') == '12'): ?>
-                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('ATENCIÓN: Esto repartirá el dinero a las cuentas. ¿Seguro?');">
-                    <input type="hidden" name="action" value="lud_liquidacion_anual">
-                    <button class="button button-primary button-large" title="IMPORTANTE: Este botón solo se usa en Diciembre. Pasa las ganancias del año a los ahorros de los socios.">
-                        🎄 Liquidación Anual
-                    </button>
-                </form>
-                <?php endif; ?>
+        
+            <?php if(date('m') == '12'): ?>
+            <div class="lud-card" style="border-left: 5px solid #e67e22; margin-bottom:30px;">
+                <h3 title="AYUDA: Herramientas para fin de año.">🎄 Cierre de Año (Diciembre)</h3>
+                <p>El sistema ya calculó automáticamente los rendimientos mes a mes. Ahora debes liquidarlos para entregar el efectivo.</p>
+                <div style="display:flex; gap:10px;">
+                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿ESTÁS SEGURA? \n\nAl confirmar, el sistema marcará los intereses de este año como PAGADOS. \n\nEsto significa que debes tener el dinero en efectivo listo para entregárselo a los socios.');">
+                        <input type="hidden" name="action" value="lud_liquidacion_anual">
+                        <button class="button button-primary button-large" title="IMPORTANTE: Clic aquí solo cuando vayas a entregar el dinero de intereses a los socios.">
+                            🎁 Liquidar y Entregar Intereses (Efectivo)
+                        </button>
+                    </form>
+                </div>
             </div>
-        </div>
+            <?php else: ?>
+                <div class="lud-card" style="background:#f0f4c3; border-left: 5px solid #cddc39; margin-bottom:30px;">
+                    <strong>ℹ️ Sistema Automático:</strong> El cálculo de rendimientos mensuales se realiza automáticamente. No necesitas hacer nada hasta Diciembre.
+                </div>
+            <?php endif; ?>
+
         <?php endif; ?>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
             
             <div class="lud-card">
-                <h3 title="AYUDA: Aquí aparecen los socios que dicen haber entregado dinero. Debes verificar el efectivo antes de aprobar.">📥 Pagos por Aprobar</h3>
+                <h3 title="AYUDA: Aquí aparecen los socios que dicen haber entregado dinero. Debes verificar el efectivo en la caja antes de aprobar.">📥 Pagos por Aprobar</h3>
                 <?php if ( empty($pendientes) ): ?>
                     <p style="color:#27ae60;">✅ Todo al día. No hay pagos pendientes.</p>
                 <?php else: ?>
@@ -287,7 +302,7 @@ class LUD_Admin_Tesoreria {
                         <strong style="font-size:1.4em; color:#27ae60;">$ <?php echo number_format($cuenta->saldo_ahorro_capital); ?></strong>
                     </div>
                     <div style="background:#fff; padding:10px; border-radius:5px;" title="Ganancias generadas por los intereses.">
-                        <small>Rendimientos</small><br>
+                        <small>Rendimientos Históricos</small><br>
                         <strong style="font-size:1.4em; color:#2980b9;">$ <?php echo number_format($cuenta->saldo_rendimientos); ?></strong>
                     </div>
                     <div style="background:#fff; padding:10px; border-radius:5px; grid-column: span 2;" title="Lo que debe hoy (Cuotas atrasadas + Saldo de Créditos)">
@@ -338,6 +353,122 @@ class LUD_Admin_Tesoreria {
         <?php
     }
 
+    // --- VISTA 4: HISTORIAL DE INTERESES PAGADOS (NUEVA) ---
+    private function render_historial_intereses() {
+        global $wpdb;
+        // Consulta: Agrupa por año y usuario los intereses que ya están en estado 'liquidado' (PAGADOS)
+        // Esto muestra la plata que ya salió de la caja y se entregó al socio.
+        $pagos = $wpdb->get_results("
+            SELECT u.display_name, m.anio, SUM(m.utilidad_asignada) as total_pagado
+            FROM {$wpdb->prefix}fondo_utilidades_mensuales m
+            JOIN {$wpdb->users} u ON m.user_id = u.ID
+            WHERE m.estado = 'liquidado'
+            GROUP BY m.user_id, m.anio
+            ORDER BY m.anio DESC, u.display_name ASC
+        ");
+        ?>
+        <div class="lud-card">
+            <h3>📜 Historial de Intereses Entregados (Efectivo)</h3>
+            <p>Este listado muestra el dinero que se ha entregado físicamente a cada socio en los cierres de Diciembre de cada año. <strong>Este dinero ya no está en la caja.</strong></p>
+            
+            <table class="widefat striped">
+                <thead><tr><th>Año</th><th>Socio</th><th>Monto Entregado</th></tr></thead>
+                <tbody>
+                <?php if(empty($pagos)): ?>
+                    <tr><td colspan="3">Aún no se han realizado liquidaciones anuales o entregas de intereses.</td></tr>
+                <?php else: ?>
+                    <?php foreach($pagos as $p): ?>
+                    <tr>
+                        <td><strong><?php echo $p->anio; ?></strong></td>
+                        <td><?php echo $p->display_name; ?></td>
+                        <td style="color:#2e7d32; font-weight:bold;">$ <?php echo number_format($p->total_pagado); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    // =============================================================
+    // AUTOMATIZACIÓN DEL CIERRE MENSUAL
+    // =============================================================
+
+    /**
+     * Verifica si falta calcular la utilidad del mes anterior.
+     * Se ejecuta silenciosamente al cargar el dashboard.
+     */
+    public function verificar_cierre_automatico() {
+        // Solo ejecuta si el usuario es Admin o Tesorero (para no sobrecargar si entra un socio cualquiera)
+        if ( ! current_user_can('lud_manage_tesoreria') ) return;
+
+        global $wpdb;
+        $mes_actual = intval(date('m'));
+        $anio_actual = intval(date('Y'));
+        
+        // Determinar mes anterior (el que se debe cerrar)
+        $mes_cierre = $mes_actual - 1;
+        $anio_cierre = $anio_actual;
+        
+        if ( $mes_cierre == 0 ) { // Si estamos en Enero, cerramos Diciembre del año pasado
+            $mes_cierre = 12;
+            $anio_cierre = $anio_actual - 1;
+        }
+
+        // Verificar si ya existe cierre para ese mes
+        $existe = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE mes = $mes_cierre AND anio = $anio_cierre");
+        
+        if ( $existe == 0 ) {
+            // ¡NO EXISTE! Ejecutar cálculo automático ahora mismo.
+            $this->calcular_utilidad_mes_especifico($mes_cierre, $anio_cierre);
+        }
+    }
+
+    private function calcular_utilidad_mes_especifico($mes, $anio) {
+        global $wpdb;
+        
+        // 1. Calcular Utilidad Neta del Mes (Ingresos - Gastos)
+        $ingresos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto IN ('interes_credito', 'multa') AND MONTH(fecha_recaudo) = $mes AND YEAR(fecha_recaudo) = $anio");
+        $gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE MONTH(fecha_gasto) = $mes AND YEAR(fecha_gasto) = $anio");
+        $utilidad_neta = floatval($ingresos) - floatval($gastos);
+        
+        // Si no hubo ganancia, registramos un cierre en 0 para que no se intente correr de nuevo
+        if ( $utilidad_neta <= 0 ) {
+            // Crear registro dummy para marcar el mes como cerrado
+            $admin_id = get_current_user_id();
+            $wpdb->insert("{$wpdb->prefix}fondo_utilidades_mensuales", ['user_id' => $admin_id, 'mes' => $mes, 'anio' => $anio, 'acciones_mes' => 0, 'utilidad_asignada' => 0, 'estado' => 'provisional']);
+            return;
+        }
+
+        // 2. Repartir entre socios al día
+        // Lógica: Solo participan quienes pagaron su cuota de ahorro EN ESE MES.
+        $socios = $wpdb->get_results("SELECT user_id, numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'");
+        $total_acciones_validas = 0;
+        $socios_habiles = [];
+
+        foreach($socios as $s) {
+            // Verificar si el socio pagó la cuota de 'ahorro' en ese mes específico
+            $pago_mes = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE user_id = {$s->user_id} AND concepto = 'ahorro' AND MONTH(fecha_recaudo) = $mes AND YEAR(fecha_recaudo) = $anio");
+            
+            if ($pago_mes > 0) {
+                $total_acciones_validas += intval($s->numero_acciones);
+                $socios_habiles[] = $s;
+            }
+        }
+
+        if ( $total_acciones_validas > 0 ) {
+            $valor_por_accion = $utilidad_neta / $total_acciones_validas;
+            foreach ( $socios_habiles as $s ) {
+                $ganancia = $s->numero_acciones * $valor_por_accion;
+                $wpdb->insert("{$wpdb->prefix}fondo_utilidades_mensuales", [
+                    'user_id' => $s->user_id, 'mes' => $mes, 'anio' => $anio,
+                    'acciones_mes' => $s->numero_acciones, 'utilidad_asignada' => $ganancia, 'estado' => 'provisional'
+                ]);
+            }
+        }
+    }
+
     // =============================================================
     // LOGICA DE NEGOCIO (SIN CAMBIOS)
     // =============================================================
@@ -352,7 +483,6 @@ class LUD_Admin_Tesoreria {
         if ( ! $tx || $tx->estado != 'pendiente' ) wp_die('Transacción inválida');
 
         $dinero_disponible = floatval( $tx->monto );
-        $log_distribucion = [];
         
         $cuenta = $wpdb->get_row( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = {$tx->user_id}" );
         $acciones = $cuenta ? intval($cuenta->numero_acciones) : 1;
@@ -386,14 +516,12 @@ class LUD_Admin_Tesoreria {
             if ( $debe_multa > 0 && $dinero_disponible > 0 ) {
                 $cobrado = min( $dinero_disponible, $debe_multa );
                 $dinero_disponible -= $cobrado;
-                $log_distribucion[] = "Multas: -$$cobrado";
                 $wpdb->insert( $table_recaudos, ['transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 'concepto' => 'multa', 'monto' => $cobrado, 'fecha_recaudo' => current_time('mysql')] );
             }
 
             if ( $debe_secretaria > 0 && $dinero_disponible > 0 ) {
                 $cobrado = min( $dinero_disponible, $debe_secretaria );
                 $dinero_disponible -= $cobrado;
-                $log_distribucion[] = "Secretaría: -$$cobrado";
                 $wpdb->insert( $table_recaudos, ['transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 'concepto' => 'cuota_secretaria', 'monto' => $cobrado, 'fecha_recaudo' => current_time('mysql')] );
             }
 
@@ -402,7 +530,6 @@ class LUD_Admin_Tesoreria {
                 $cobrado = min( $dinero_disponible, $debe_ahorro );
                 $dinero_disponible -= $cobrado;
                 $ahorro_cobrado += $cobrado;
-                $log_distribucion[] = "Ahorro: +$$cobrado";
                 $wpdb->insert( $table_recaudos, ['transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 'concepto' => 'ahorro', 'monto' => $cobrado, 'fecha_recaudo' => current_time('mysql')] );
             }
 
@@ -410,11 +537,9 @@ class LUD_Admin_Tesoreria {
                 $credito_activo = $wpdb->get_row("SELECT id FROM {$wpdb->prefix}fondo_creditos WHERE user_id = {$tx->user_id} AND estado = 'activo' LIMIT 1");
 
                 if ($credito_activo) {
-                    $log_distribucion[] = "Abono Capital: -$$dinero_disponible";
                     $wpdb->insert( $table_recaudos, ['transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 'concepto' => 'capital_credito', 'monto' => $dinero_disponible, 'fecha_recaudo' => current_time('mysql')] );
                     $wpdb->query( $wpdb->prepare("UPDATE {$wpdb->prefix}fondo_creditos SET saldo_actual = saldo_actual - %f WHERE id = %d", $dinero_disponible, $credito_activo->id) );
                 } else {
-                    $log_distribucion[] = "Ahorro Extra: +$$dinero_disponible";
                     $ahorro_cobrado += $dinero_disponible;
                     $wpdb->insert( $table_recaudos, ['transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 'concepto' => 'ahorro', 'monto' => $dinero_disponible, 'fecha_recaudo' => current_time('mysql')] );
                 }
@@ -425,7 +550,7 @@ class LUD_Admin_Tesoreria {
                 $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->prefix}fondo_cuentas SET saldo_ahorro_capital = saldo_ahorro_capital + %f, fecha_ultimo_aporte = %s WHERE user_id = %d", $ahorro_cobrado, $nueva_fecha, $tx->user_id));
             }
 
-            $detalle_final = $tx->detalle . " || PROCESADO: " . implode(', ', $log_distribucion);
+            $detalle_final = $tx->detalle;
             $wpdb->update( $wpdb->prefix . 'fondo_transacciones', ['estado' => 'aprobado', 'aprobado_por' => get_current_user_id(), 'fecha_aprobacion' => current_time('mysql'), 'detalle' => $detalle_final], ['id' => $tx->id] );
 
             $wpdb->query('COMMIT');
@@ -513,53 +638,22 @@ class LUD_Admin_Tesoreria {
         }
     }
 
-    // --- FUNCIONES NUEVAS: CIERRE MENSUAL Y ANUAL ---
+    // =============================================================
+    // CIERRE Y LIQUIDACIÓN ANUAL
+    // =============================================================
 
     public function ejecutar_cierre_mensual_manual() {
         if (!current_user_can('manage_options')) wp_die('Sin permisos');
-        $this->calcular_utilidad_mes_actual();
+        // Este método queda por compatibilidad si se llama manual, 
+        // pero la lógica real está en verificar_cierre_automatico
+        $this->verificar_cierre_automatico();
         wp_redirect(admin_url('admin.php?page=lud-tesoreria&msg=cierre_ok'));
         exit;
     }
 
-    public function calcular_utilidad_mes_actual() {
-        global $wpdb;
-        $mes_actual = date('m');
-        $anio_actual = date('Y');
-        $ya_calculado = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE mes = $mes_actual AND anio = $anio_actual");
-        if ( $ya_calculado > 0 ) return; 
-
-        $ingresos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto IN ('interes_credito', 'multa') AND MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual");
-        $gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE MONTH(fecha_gasto) = $mes_actual AND YEAR(fecha_gasto) = $anio_actual");
-        $utilidad_neta = floatval($ingresos) - floatval($gastos);
-        if ( $utilidad_neta <= 0 ) return; 
-
-        $fecha_corte_mes = date('Y-m-01'); 
-        $socios_todos = $wpdb->get_results("SELECT user_id, numero_acciones, fecha_ultimo_aporte FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'");
-        
-        $acciones_participantes = 0;
-        $socios_habiles = [];
-
-        foreach ($socios_todos as $s) {
-            if ( $s->fecha_ultimo_aporte >= $fecha_corte_mes ) {
-                $acciones_participantes += intval($s->numero_acciones);
-                $socios_habiles[] = $s;
-            } else {
-                $wpdb->insert("{$wpdb->prefix}fondo_utilidades_mensuales", ['user_id' => $s->user_id, 'mes' => $mes_actual, 'anio' => $anio_actual, 'acciones_mes' => $s->numero_acciones, 'utilidad_asignada' => 0, 'estado' => 'provisional']);
-            }
-        }
-        
-        if ( $acciones_participantes == 0 ) return; 
-        $valor_por_accion = $utilidad_neta / $acciones_participantes;
-        
-        foreach ( $socios_habiles as $s ) {
-            $ganancia = $s->numero_acciones * $valor_por_accion;
-            $wpdb->insert("{$wpdb->prefix}fondo_utilidades_mensuales", ['user_id' => $s->user_id, 'mes' => $mes_actual, 'anio' => $anio_actual, 'acciones_mes' => $s->numero_acciones, 'utilidad_asignada' => $ganancia, 'estado' => 'provisional']);
-        }
-    }
-
     public function procesar_liquidacion_anual() {
         if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Acceso denegado: No tienes permisos de Tesorero.');
+        
         global $wpdb;
         $morosos = 0;
         $cuentas = $wpdb->get_results("SELECT user_id, fecha_ultimo_aporte FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio='activo'");
@@ -569,12 +663,15 @@ class LUD_Admin_Tesoreria {
         if ( $morosos > 0 ) wp_die("<div class='error'><h1>⛔ BLOQUEO</h1><p>Hay $morosos socios en mora.</p></div>");
 
         $anio = date('Y');
-        $utilidades = $wpdb->get_results("SELECT user_id, SUM(utilidad_asignada) as total FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE anio = $anio AND estado = 'provisional' GROUP BY user_id");
         
-        foreach ( $utilidades as $u ) {
-            $wpdb->query("UPDATE {$wpdb->prefix}fondo_cuentas SET saldo_rendimientos = saldo_rendimientos + {$u->total} WHERE user_id = {$u->user_id}");
-            $wpdb->update("{$wpdb->prefix}fondo_utilidades_mensuales", ['estado' => 'liquidado'], ['user_id' => $u->user_id, 'anio' => $anio]);
-        }
+        // 1. Marcar como LIQUIDADO (Pagado en efectivo)
+        // Esto cambia el estado de 'provisional' a 'liquidado' en la base de datos.
+        // Al hacer esto, el sistema asume que el dinero salió de la caja.
+        $wpdb->query("UPDATE {$wpdb->prefix}fondo_utilidades_mensuales SET estado = 'liquidado' WHERE anio = $anio AND estado = 'provisional'");
+        
+        // NO sumamos a 'saldo_rendimientos' de la cuenta porque el dinero se entregó.
+        // La tabla de utilidades queda como el registro histórico del pago.
+
         wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=liquidacion_exito') );
         exit;
     }
