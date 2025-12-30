@@ -15,28 +15,25 @@ class LUD_Admin_Tesoreria {
     }
 
     public function register_menu() {
-        // CAMBIO: Usamos 'lud_view_tesoreria' en lugar de 'manage_options'
-        // Así Secretaria, Presidente y Tesorero pueden entrar.
+        // Usamos 'lud_view_tesoreria' para que Secretaria, Presidente y Tesorero puedan ver
         add_menu_page( 'Tesorería', '💰 Tesorería', 'lud_view_tesoreria', 'lud-tesoreria', array( $this, 'router_views' ), 'dashicons-money-alt', 2 );
     }
 
     /**
      * ENRUTADOR DE VISTAS
-     * Decide qué pantalla mostrar según la navegación
      */
     public function router_views() {
         $view = isset($_GET['view']) ? $_GET['view'] : 'dashboard';
         
         echo '<div class="wrap">';
-        // Título y Navegación
         echo '<h1 class="wp-heading-inline" style="margin-bottom:20px;">Gestión de Tesorería La Unión</h1>';
         
         $active_dash = ($view == 'dashboard') ? 'nav-tab-active' : '';
         $active_socio = ($view == 'buscar_socio' || $view == 'detalle_socio') ? 'nav-tab-active' : '';
         
         echo '<nav class="nav-tab-wrapper">';
-        echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'">📊 Tablero Principal</a>';
-        echo '<a href="?page=lud-tesoreria&view=buscar_socio" class="nav-tab '.$active_socio.'">👥 Directorio y Consultas</a>';
+        echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'" title="Ayuda: Aquí ves el dinero total, apruebas pagos y desembolsas créditos.">📊 Tablero Principal</a>';
+        echo '<a href="?page=lud-tesoreria&view=buscar_socio" class="nav-tab '.$active_socio.'" title="Ayuda: Aquí buscas a un socio para ver su historia completa.">👥 Directorio y Consultas</a>';
         echo '</nav>';
         echo '<br>';
 
@@ -50,15 +47,15 @@ class LUD_Admin_Tesoreria {
         echo '</div>';
     }
 
-    // --- VISTA 1: TABLERO GENERAL (Resumen y Pendientes) ---
+    // --- VISTA 1: TABLERO GENERAL ---
     private function render_dashboard_general() {
         global $wpdb;
         $anio_actual = date('Y');
         
-        // DEFINIR SI PUEDE EDITAR
+        // SEGURIDAD: Definir si el usuario puede editar (Tesorero/Admin/Presidente)
         $puede_editar = current_user_can('lud_manage_tesoreria');
 
-        // 1. CÁLCULOS DE CAJA
+        // 1. CÁLCULOS
         $total_entradas = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle");
         $total_gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos");
         $total_prestado = $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'pagado', 'mora')");
@@ -70,7 +67,7 @@ class LUD_Admin_Tesoreria {
         
         $disponible_para_creditos = $dinero_fisico - $fondo_secretaria;
 
-        // 2. CONSULTAS
+        // 2. CONSULTAS PENDIENTES
         $pendientes = $wpdb->get_results( 
             "SELECT tx.*, u.user_email, u.display_name 
              FROM {$wpdb->prefix}fondo_transacciones tx
@@ -86,42 +83,50 @@ class LUD_Admin_Tesoreria {
         ?>
         
         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px;">
-            <div class="lud-card" style="flex:1; min-width:300px; background:#2c3e50; color:#fff;">
-                <h3 style="color:#bdc3c7; margin-top:0;">🏦 Dinero Total en Banco</h3>
+            <div class="lud-card" style="flex:1; min-width:300px; background:#2c3e50; color:#fff; cursor:help;" 
+                 title="AYUDA: Esta es la suma de todo el dinero que debería haber físicamente en la Caja Fuerte. Si el conteo físico dice otra cosa, hay un descuadre.">
+                <h3 style="color:#bdc3c7; margin-top:0;">🏦 Dinero Total en Caja</h3>
                 <div style="font-size:2.5rem; font-weight:bold;">$ <?php echo number_format($dinero_fisico, 0, ',', '.'); ?></div>
-                <p style="opacity:0.8;">Arqueo físico total.</p>
+                <p style="opacity:0.8;">Arqueo físico total (Incluye Secretaría).</p>
             </div>
             
-            <div class="lud-card" style="flex:1; min-width:300px; background:#27ae60; color:#fff;">
+            <div class="lud-card" style="flex:1; min-width:300px; background:#27ae60; color:#fff; cursor:help;"
+                 title="AYUDA: Este es el dinero que REALMENTE puedes prestar. El sistema ya restó automáticamente la plata que es de la Secretaría, para que no la toques.">
                 <h3 style="color:#a9dfbf; margin-top:0;">✅ Disponible para Prestar</h3>
                 <div style="font-size:2.5rem; font-weight:bold;">$ <?php echo number_format($disponible_para_creditos, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">(Descontando $<?php echo number_format($fondo_secretaria); ?> de Secretaría)</p>
             </div>
         </div>
 
+        <?php if ( $puede_editar ): ?>
         <div class="lud-card" style="border-left: 5px solid #e67e22; margin-bottom:30px;">
-            <h3>⚙️ Acciones Administrativas</h3>
+            <h3 title="AYUDA: Herramientas para fin de mes.">⚙️ Acciones Administrativas</h3>
             <div style="display:flex; gap:10px;">
                 <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Ejecutar cálculo de utilidades de este mes?');">
                     <input type="hidden" name="action" value="lud_cierre_mensual">
-                    <button class="button button-large">📅 Ejecutar Cierre Mensual</button>
+                    <button class="button button-large" title="AYUDA: Presiona este botón el último día del mes. El sistema calculará cuánto ganó cada socio este mes.">
+                        📅 Ejecutar Cierre Mensual
+                    </button>
                 </form>
                 
                 <?php if(date('m') == '12'): ?>
                 <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('ATENCIÓN: Esto repartirá el dinero a las cuentas. ¿Seguro?');">
                     <input type="hidden" name="action" value="lud_liquidacion_anual">
-                    <button class="button button-primary button-large">🎄 Liquidación Anual</button>
+                    <button class="button button-primary button-large" title="IMPORTANTE: Este botón solo se usa en Diciembre. Pasa las ganancias del año a los ahorros de los socios.">
+                        🎄 Liquidación Anual
+                    </button>
                 </form>
                 <?php endif; ?>
             </div>
         </div>
+        <?php endif; ?>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
             
             <div class="lud-card">
-                <h3>📥 Pagos por Aprobar</h3>
+                <h3 title="AYUDA: Aquí aparecen los socios que dicen haber entregado dinero. Debes verificar el efectivo antes de aprobar.">📥 Pagos por Aprobar</h3>
                 <?php if ( empty($pendientes) ): ?>
-                    <p style="color:#27ae60;">✅ Todo al día.</p>
+                    <p style="color:#27ae60;">✅ Todo al día. No hay pagos pendientes.</p>
                 <?php else: ?>
                     <table class="widefat striped">
                         <?php foreach($pendientes as $tx): ?>
@@ -132,14 +137,26 @@ class LUD_Admin_Tesoreria {
                                 <small><?php echo date_i18n('d/M', strtotime($tx->fecha_registro)); ?></small>
                             </td>
                             <td style="text-align:right;">
-                                <a href="<?php echo admin_url('admin-post.php?action=lud_ver_comprobante&file='.$tx->comprobante_url); ?>" target="_blank" class="button">Ver Foto</a>
+                                <a href="<?php echo admin_url('admin-post.php?action=lud_ver_comprobante&file='.$tx->comprobante_url); ?>" target="_blank" class="button" title="Clic para ver la foto del recibo que subió el socio.">Ver Foto</a>
+                                
                                 <div style="margin-top:5px;">
-                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="display:inline;">
-                                        <input type="hidden" name="action" value="lud_aprobar_pago">
-                                        <input type="hidden" name="tx_id" value="<?php echo $tx->id; ?>">
-                                        <?php wp_nonce_field('aprobar_'.$tx->id, 'security'); ?>
-                                        <button class="button button-primary">Aprobar</button>
-                                    </form>
+                                    <?php if ( $puede_editar ): ?>
+                                        <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="display:inline;">
+                                            <input type="hidden" name="action" value="lud_aprobar_pago">
+                                            <input type="hidden" name="tx_id" value="<?php echo $tx->id; ?>">
+                                            <?php wp_nonce_field('aprobar_'.$tx->id, 'security'); ?>
+                                            <button class="button button-primary" title="AYUDA: Clic aquí si YA RECIBISTE el dinero en efectivo. Esto suma el saldo al socio.">Aprobar</button>
+                                        </form>
+                                        <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="display:inline;" onsubmit="return confirm('¿Rechazar pago?');">
+                                            <input type="hidden" name="action" value="lud_rechazar_pago">
+                                            <input type="hidden" name="tx_id" value="<?php echo $tx->id; ?>">
+                                            <input type="hidden" name="motivo" value="No validado">
+                                            <?php wp_nonce_field('rechazar_'.$tx->id, 'security'); ?>
+                                            <button class="button button-link-delete" style="color:#c0392b;" title="AYUDA: Clic aquí si el dinero no llegó a la caja.">Rechazar</button>
+                                        </form>
+                                    <?php else: ?>
+                                        <span class="dashicons dashicons-lock" title="No tienes permiso para aprobar."></span> <small>Solo Lectura</small>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -149,7 +166,7 @@ class LUD_Admin_Tesoreria {
             </div>
 
             <div class="lud-card">
-                <h3>💸 Créditos para Desembolsar</h3>
+                <h3 title="AYUDA: Aquí aparecen los créditos que ya fueron firmados por Socio y Fiador. Solo falta que entregues el dinero de la caja.">💸 Créditos para Desembolsar</h3>
                 <?php if ( empty($creditos_pendientes) ): ?>
                     <p style="color:#7f8c8d;">No hay solicitudes pendientes.</p>
                 <?php else: ?>
@@ -157,13 +174,18 @@ class LUD_Admin_Tesoreria {
                     <div style="border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:5px;">
                         <strong><?php echo $c->display_name; ?></strong> solicita <strong style="color:#c0392b;">$<?php echo number_format($c->monto_solicitado); ?></strong>
                         <p style="font-size:0.9em; margin:5px 0;">Plazo: <?php echo $c->plazo_meses; ?> meses | Firmas: ✅ Completas</p>
-                        <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Confirmas el desembolso?');">
-                            <input type="hidden" name="action" value="lud_aprobar_desembolso">
-                            <input type="hidden" name="credito_id" value="<?php echo $c->id; ?>">
-                            <input type="text" name="datos_entrega" placeholder="# Ref. Transferencia" required style="width:100%; margin-bottom:5px;">
-                            <?php wp_nonce_field('lud_approve_credit', 'security'); ?>
-                            <button class="button button-primary" style="width:100%;">Confirmar Desembolso</button>
-                        </form>
+                        
+                        <?php if ( $puede_editar ): ?>
+                            <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Confirmas el desembolso?');">
+                                <input type="hidden" name="action" value="lud_aprobar_desembolso">
+                                <input type="hidden" name="credito_id" value="<?php echo $c->id; ?>">
+                                <input type="text" name="datos_entrega" placeholder="Ref. de entrega / Firma" required style="width:100%; margin-bottom:5px;" title="Escribe aquí algún detalle de la entrega del efectivo.">
+                                <?php wp_nonce_field('lud_approve_credit', 'security'); ?>
+                                <button class="button button-primary" style="width:100%;" title="AYUDA: Dale clic SOLO cuando ya le hayas entregado el dinero físico al socio.">Confirmar Desembolso</button>
+                            </form>
+                        <?php else: ?>
+                            <div style="color:#777; font-style:italic; background:#f0f0f0; padding:5px; text-align:center;">⚠️ Esperando aprobación de Tesorería</div>
+                        <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -187,15 +209,14 @@ class LUD_Admin_Tesoreria {
                 '%' . $search . '%', '%' . $search . '%'
             ));
         } else {
-            // Mostrar los últimos 10
             $socios = $wpdb->get_results("SELECT u.ID, u.display_name, u.user_email, c.numero_acciones, c.estado_socio FROM {$wpdb->users} u JOIN {$wpdb->prefix}fondo_cuentas c ON u.ID = c.user_id LIMIT 10");
         }
         ?>
         <div class="lud-card" style="max-width:800px; margin:0 auto;">
-            <h3>🔍 Buscar Asociado</h3>
+            <h3 title="AYUDA: Usa esta pantalla para ver cuánto debe o cuánto tiene ahorrado un socio específico.">🔍 Buscar Asociado</h3>
             <form method="POST">
                 <input type="text" name="s_socio" value="<?php echo esc_attr($search); ?>" placeholder="Escribe nombre o correo..." style="width:70%; padding:8px; font-size:16px;">
-                <button class="button button-primary button-hero">Buscar</button>
+                <button class="button button-primary button-hero" title="Clic para buscar">Buscar</button>
             </form>
             
             <table class="wp-list-table widefat fixed striped" style="margin-top:20px;">
@@ -218,7 +239,7 @@ class LUD_Admin_Tesoreria {
                             ?>
                         </td>
                         <td>
-                            <a href="?page=lud-tesoreria&view=detalle_socio&id=<?php echo $s->ID; ?>" class="button button-primary">Ver Hoja de Vida</a>
+                            <a href="?page=lud-tesoreria&view=detalle_socio&id=<?php echo $s->ID; ?>" class="button button-primary" title="Clic para ver todos los detalles financieros de este socio.">Ver Hoja de Vida</a>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -229,7 +250,7 @@ class LUD_Admin_Tesoreria {
         <?php
     }
 
-    // --- VISTA 3: HOJA DE VIDA DETALLADA (EL CORE DE LA CONSULTA) ---
+    // --- VISTA 3: HOJA DE VIDA DETALLADA ---
     private function render_hoja_vida_socio() {
         if ( !isset($_GET['id']) ) return;
         $user_id = intval($_GET['id']);
@@ -238,14 +259,10 @@ class LUD_Admin_Tesoreria {
         $user = get_userdata($user_id);
         $cuenta = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
         
-        // Transacciones recientes
         $transacciones = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = $user_id ORDER BY fecha_registro DESC LIMIT 10");
-        
-        // Créditos
         $creditos = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id ORDER BY fecha_solicitud DESC");
         
-        // Reutilizamos la lógica de cálculo de deuda para mostrar estado real
-        $tx_module = new LUD_Module_Transacciones(); // Asumiendo que instanciamos o hacemos static el helper
+        $tx_module = new LUD_Module_Transacciones(); 
         $deuda_info = $tx_module->calcular_deuda_usuario($user_id);
         ?>
         
@@ -265,15 +282,15 @@ class LUD_Admin_Tesoreria {
             <div class="lud-card" style="flex:1; min-width:300px; background:#f9f9f9;">
                 <h3>💰 Estado de Cuenta</h3>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-                    <div style="background:#fff; padding:10px; border-radius:5px;">
+                    <div style="background:#fff; padding:10px; border-radius:5px;" title="Dinero que el socio ha aportado mes a mes.">
                         <small>Total Ahorrado</small><br>
                         <strong style="font-size:1.4em; color:#27ae60;">$ <?php echo number_format($cuenta->saldo_ahorro_capital); ?></strong>
                     </div>
-                    <div style="background:#fff; padding:10px; border-radius:5px;">
+                    <div style="background:#fff; padding:10px; border-radius:5px;" title="Ganancias generadas por los intereses.">
                         <small>Rendimientos</small><br>
                         <strong style="font-size:1.4em; color:#2980b9;">$ <?php echo number_format($cuenta->saldo_rendimientos); ?></strong>
                     </div>
-                    <div style="background:#fff; padding:10px; border-radius:5px; grid-column: span 2;">
+                    <div style="background:#fff; padding:10px; border-radius:5px; grid-column: span 2;" title="Lo que debe hoy (Cuotas atrasadas + Saldo de Créditos)">
                         <small>Deuda Total (Admin + Créditos)</small><br>
                         <?php $total_deuda = $deuda_info['total_admin'] + $deuda_info['creditos']; ?>
                         <strong style="font-size:1.4em; color:<?php echo ($total_deuda > 0) ? '#c0392b' : '#7f8c8d'; ?>;">
@@ -322,7 +339,7 @@ class LUD_Admin_Tesoreria {
     }
 
     // =============================================================
-    // LOGICA DE NEGOCIO (SIN CAMBIOS, SOLO REUBICACIÓN)
+    // LOGICA DE NEGOCIO (SIN CAMBIOS)
     // =============================================================
 
     public function procesar_aprobacion() {
@@ -562,4 +579,4 @@ class LUD_Admin_Tesoreria {
         exit;
     }
 
-} // FIN CLASE
+} // FIN DE LA CLASE
