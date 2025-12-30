@@ -401,12 +401,6 @@ class LUD_Admin_Tesoreria {
      */
 
     // --- FUNCIÓN RECUPERADA PARA DEBUG Y PRUEBAS ---
-    public function calcular_utilidad_mes_actual() {
-        // Esta función actúa como puente para las herramientas de prueba
-        $mes = intval(date('m'));
-        $anio = intval(date('Y'));
-        $this->calcular_utilidad_mes_especifico($mes, $anio);
-    }
 
     public function verificar_cierre_automatico() {
         // Solo ejecuta si el usuario es Admin o Tesorero (para no sobrecargar si entra un socio cualquiera)
@@ -683,6 +677,19 @@ class LUD_Admin_Tesoreria {
 
         wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=liquidacion_exito') );
         exit;
+    }
+
+    // --- FUNCIÓN PUENTE PARA DEBUG TOOLS (AGREGAR AL FINAL DE LA CLASE) ---
+    public function calcular_utilidad_mes_actual() {
+        // Esta función permite que las pruebas manuales sigan funcionando
+        $mes = intval(date('m'));
+        $anio = intval(date('Y'));
+        
+        // Si estamos en Enero, calculamos Diciembre del año anterior
+        if ($mes == 1) { $mes = 12; $anio = $anio - 1; }
+        else { $mes = $mes - 1; }
+
+        $this->calcular_utilidad_mes_especifico($mes, $anio);
     }
 
 } // FIN DE LA CLASE

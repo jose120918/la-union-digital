@@ -171,6 +171,18 @@ class LUD_Frontend_Shortcodes {
         global $wpdb;
         $user_id = get_current_user_id();
         $cuenta = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id ) );
+        
+        // --- INICIO CORRECCIÓN: EVITAR ERROR EN USUARIOS NUEVOS ---
+        if ( ! $cuenta ) {
+            $cuenta = new stdClass();
+            $cuenta->beneficiario_nombre = '';
+            $cuenta->beneficiario_parentesco = '';
+            $cuenta->beneficiario_telefono = '';
+            $cuenta->saldo_ahorro_capital = 0;
+            $cuenta->saldo_rendimientos = 0;
+            $cuenta->numero_acciones = 0;
+        }
+        // --- FIN CORRECCIÓN ---
 
         $msg = '';
         if ( isset( $_GET['lud_profile_saved'] ) ) {
