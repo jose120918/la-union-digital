@@ -399,6 +399,15 @@ class LUD_Admin_Tesoreria {
      * Verifica si falta calcular la utilidad del mes anterior.
      * Se ejecuta silenciosamente al cargar el dashboard.
      */
+
+    // --- FUNCIÓN RECUPERADA PARA DEBUG Y PRUEBAS ---
+    public function calcular_utilidad_mes_actual() {
+        // Esta función actúa como puente para las herramientas de prueba
+        $mes = intval(date('m'));
+        $anio = intval(date('Y'));
+        $this->calcular_utilidad_mes_especifico($mes, $anio);
+    }
+
     public function verificar_cierre_automatico() {
         // Solo ejecuta si el usuario es Admin o Tesorero (para no sobrecargar si entra un socio cualquiera)
         if ( ! current_user_can('lud_manage_tesoreria') ) return;
