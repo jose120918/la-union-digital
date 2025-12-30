@@ -226,31 +226,7 @@ class LUD_Admin_Tesoreria {
                 </tbody>
             </table>
         </div>
-
-        <div class="lud-card" style="border-left: 5px solid #e67e22; margin-bottom:30px;">
-        <h3>⚙️ Acciones Administrativas</h3>
-        </div>
-    <?php endif; ?>
-
-    <td>
-        <?php if ( $puede_editar ): ?>
-            <div style="display:flex; gap:5px;">
-                <form...>Aprobar</form>
-                <form...>Rechazar</form>
-            </div>
-        <?php else: ?>
-            <span class="dashicons dashicons-lock"></span> Solo Lectura
-        <?php endif; ?>
-    </td>
-    
-    <?php if ( $puede_editar ): ?>
-        <form...>Confirmar Desembolso</form>
-    <?php else: ?>
-        <div style="color:#777; font-style:italic;">⚠️ Esperando aprobación de Tesorería</div>
-    <?php endif; ?>
         <?php
-
-        
     }
 
     // --- VISTA 3: HOJA DE VIDA DETALLADA (EL CORE DE LA CONSULTA) ---
