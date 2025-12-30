@@ -18,14 +18,14 @@ class LUD_Frontend_Shortcodes {
         global $wpdb;
         $datos = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id ) );
 
-        if ( ! $datos ) return '<div class="lud-card"><p>Cuenta no activa.</p></div>';
+        if ( ! $datos ) return '<div class="lud-card"><p>Cuenta no activa. Por favor actualiza tus datos de beneficiario para activar tu ficha.</p></div>';
 
         // Variables base
         $acciones = intval( $datos->numero_acciones );
         $valor_cuota_ahorro = $acciones * 50000;
         $valor_cuota_secretaria = $acciones * 1000;
         
-        // --- 1. CÁLCULO DEUDA (Tu lógica existente) ---
+        // --- 1. CÁLCULO DEUDA ---
         $debe_ahorro = 0; $debe_secretaria = 0; $debe_multa = 0;
         $fecha_ultimo = $datos->fecha_ultimo_aporte ? $datos->fecha_ultimo_aporte : date('Y-m-01'); 
         $inicio = new DateTime( $fecha_ultimo );
@@ -45,8 +45,7 @@ class LUD_Frontend_Shortcodes {
         }
         $total_pendiente = $debe_ahorro + $debe_secretaria + $debe_multa;
 
-        // --- 2. CÁLCULO RENDIMIENTOS DINÁMICO (NUEVO) ---
-        // Sumamos lo ya liquidado en años anteriores + Lo acumulado este año (provisional)
+        // --- 2. CÁLCULO RENDIMIENTOS DINÁMICO ---
         $anio_actual = date('Y');
         $acumulado_este_anio = $wpdb->get_var( $wpdb->prepare(
             "SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales 
@@ -164,25 +163,22 @@ class LUD_Frontend_Shortcodes {
         return ob_get_clean();
     }
 
-    // --- CARD 3: PERFIL BENEFICIARIO (ACTUALIZADO CON TELÉFONO) ---
+    // --- CARD 3: PERFIL BENEFICIARIO (CORREGIDO) ---
     public function render_perfil_beneficiario() {
         if ( ! is_user_logged_in() ) return '';
 
         global $wpdb;
         $user_id = get_current_user_id();
         $cuenta = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id ) );
-        
-        // --- INICIO CORRECCIÓN: EVITAR ERROR EN USUARIOS NUEVOS ---
+
+        // --- CORRECCIÓN VITAL: Evitar error en usuarios nuevos ---
         if ( ! $cuenta ) {
             $cuenta = new stdClass();
             $cuenta->beneficiario_nombre = '';
             $cuenta->beneficiario_parentesco = '';
             $cuenta->beneficiario_telefono = '';
-            $cuenta->saldo_ahorro_capital = 0;
-            $cuenta->saldo_rendimientos = 0;
-            $cuenta->numero_acciones = 0;
         }
-        // --- FIN CORRECCIÓN ---
+        // ---------------------------------------------------------
 
         $msg = '';
         if ( isset( $_GET['lud_profile_saved'] ) ) {
@@ -247,15 +243,33 @@ class LUD_Frontend_Shortcodes {
         $telefono = sanitize_text_field( $_POST['beneficiario_telefono'] );
         $parentesco = sanitize_text_field( $_POST['beneficiario_parentesco'] );
 
-        $wpdb->update(
-            $wpdb->prefix . 'fondo_cuentas',
-            array( 
-                'beneficiario_nombre' => $nombre, 
-                'beneficiario_parentesco' => $parentesco,
-                'beneficiario_telefono' => $telefono
-            ),
-            array( 'user_id' => $user_id )
-        );
+        // Verificar si existe la cuenta
+        $existe = $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id) );
+
+        if ( $existe ) {
+            $wpdb->update(
+                $wpdb->prefix . 'fondo_cuentas',
+                array( 
+                    'beneficiario_nombre' => $nombre, 
+                    'beneficiario_parentesco' => $parentesco,
+                    'beneficiario_telefono' => $telefono
+                ),
+                array( 'user_id' => $user_id )
+            );
+        } else {
+            // INSERTAR NUEVA CUENTA SI NO EXISTE
+            $wpdb->insert(
+                $wpdb->prefix . 'fondo_cuentas',
+                array(
+                    'user_id' => $user_id,
+                    'numero_acciones' => 0, // Inicia en 0 hasta que pague
+                    'beneficiario_nombre' => $nombre,
+                    'beneficiario_parentesco' => $parentesco,
+                    'beneficiario_telefono' => $telefono,
+                    'estado_socio' => 'activo'
+                )
+            );
+        }
 
         wp_redirect( add_query_arg( 'lud_profile_saved', '1', wp_get_referer() ) );
         exit;

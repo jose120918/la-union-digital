@@ -681,9 +681,12 @@ class LUD_Admin_Tesoreria {
 
     // --- FUNCIÓN PUENTE PARA DEBUG TOOLS (AGREGAR AL FINAL DE LA CLASE) ---
     public function calcular_utilidad_mes_actual() {
-        // Esta función permite que las pruebas manuales sigan funcionando
+        // Para efectos de PRUEBAS y DEBUG, calculamos el mes ACTUAL.
+        // La automatización real usa 'verificar_cierre_automatico' que sí mira el mes anterior.
         $mes = intval(date('m'));
         $anio = intval(date('Y'));
+        
+        $this->calcular_utilidad_mes_especifico($mes, $anio);
         
         // Si estamos en Enero, calculamos Diciembre del año anterior
         if ($mes == 1) { $mes = 12; $anio = $anio - 1; }
