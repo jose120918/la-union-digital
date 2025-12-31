@@ -17,6 +17,7 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_aprobar_registro', array( $this, 'procesar_aprobacion_registro' ) );
         add_action( 'admin_post_lud_rechazar_registro', array( $this, 'procesar_rechazo_registro' ) );
         add_action( 'admin_post_lud_cancelar_cambio_acciones', array( $this, 'procesar_cancelacion_acciones' ) );
+        add_action( 'admin_post_lud_guardar_edicion_socio', array( $this, 'procesar_edicion_socio' ) );
     }
 
     public function register_menu() {
@@ -57,6 +58,8 @@ class LUD_Admin_Tesoreria {
             $this->render_hoja_vida_socio();
         } elseif ( $view == 'historial_intereses' ) {
             $this->render_historial_intereses();
+        } elseif ( $view == 'editar_socio' ) {
+            $this->render_editor_socio();
         }
         echo '</div>';
     }
@@ -373,9 +376,14 @@ class LUD_Admin_Tesoreria {
         
         <p><a href="?page=lud-tesoreria&view=buscar_socio" class="button">← Volver al Directorio</a></p>
         
-        <div style="display:flex; gap:20px; flex-wrap:wrap;">
-            <div class="lud-card" style="flex:1; min-width:300px;">
-                <h3>👤 <?php echo $user->display_name; ?></h3>
+        <div class="lud-card" style="flex:1; min-width:300px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0;">👤 <?php echo $user->display_name; ?></h3>
+                    <?php if ( current_user_can('lud_manage_tesoreria') ): ?>
+                        <a href="?page=lud-tesoreria&view=editar_socio&id=<?php echo $user_id; ?>" class="button button-secondary">✏️ Editar Datos</a>
+                    <?php endif; ?>
+                </div>
+                <br>
                 <table style="width:100%; text-align:left;">
                     <tr><th>Acciones Hoy:</th><td><?php echo $cuenta->numero_acciones; ?></td></tr>
                     <tr><th>Estado:</th><td><?php echo ucfirst($cuenta->estado_socio); ?></td></tr>
@@ -856,6 +864,254 @@ class LUD_Admin_Tesoreria {
         delete_user_meta($user_id, 'lud_acciones_programadas');
 
         wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=cancelado") );
+        exit;
+    }
+
+    private function render_editor_socio() {
+        if ( !isset($_GET['id']) ) return;
+        $user_id = intval($_GET['id']);
+        
+        // Seguridad y Datos
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Acceso denegado');
+        global $wpdb;
+        $user = get_userdata($user_id);
+        $cuenta = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+
+        // Lógica de Bloqueo Temporal (1 año)
+        $ultima_actualizacion = get_user_meta($user_id, 'lud_fecha_actualizacion_sensible', true);
+        $bloqueo_sensible = false;
+        $dias_restantes = 0;
+
+        if ( $ultima_actualizacion ) {
+            $fecha_limite = strtotime('+1 year', strtotime($ultima_actualizacion));
+            if ( time() < $fecha_limite ) {
+                $bloqueo_sensible = true;
+                $dias_restantes = ceil(($fecha_limite - time()) / (60 * 60 * 24));
+            }
+        }
+        
+        // Helpers de UI
+        $readonly_attr = $bloqueo_sensible ? 'readonly style="background:#eee; cursor:not-allowed;" title="Bloqueado por seguridad (1 vez al año)"' : '';
+        $nota_bloqueo = $bloqueo_sensible ? "<div class='lud-alert error' style='margin-bottom:15px;'>🔒 <strong>Datos Sensibles Bloqueados:</strong> Se editaron hace menos de un año. Podrán modificarse nuevamente en $dias_restantes días.</div>" : "<div class='lud-alert success' style='margin-bottom:15px;'>🔓 <strong>Edición Habilitada:</strong> Puedes modificar datos sensibles (Nombre, Cédula, Fechas Clave). Al guardar, se bloquearán por 1 año.</div>";
+        ?>
+
+        <p><a href="?page=lud-tesoreria&view=detalle_socio&id=<?php echo $user_id; ?>" class="button">← Cancelar y Volver</a></p>
+        
+        <div class="lud-card" style="max-width:900px;">
+            <h3>✏️ Editar Información del Asociado</h3>
+            <?php echo $nota_bloqueo; ?>
+
+            <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="lud_guardar_edicion_socio">
+                <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
+                <?php wp_nonce_field('lud_edit_user_'.$user_id, 'security'); ?>
+
+                <h4 style="border-bottom:1px solid #eee; padding-bottom:5px; margin-top:20px;">1. Datos Personales (Sensibles)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div>
+                        <label class="lud-label">Nombre Completo</label>
+                        <input type="text" name="nombre_completo" class="lud-input" value="<?php echo esc_attr($user->display_name); ?>" <?php echo $readonly_attr; ?>>
+                    </div>
+                    <div>
+                        <label class="lud-label">Fecha de Nacimiento</label>
+                        <input type="date" name="fecha_nacimiento" class="lud-input" value="<?php echo esc_attr($cuenta->fecha_nacimiento); ?>" <?php echo $readonly_attr; ?>>
+                    </div>
+                    <div>
+                        <label class="lud-label">Tipo Documento</label>
+                        <select name="tipo_documento" class="lud-input" <?php if($bloqueo_sensible) echo 'style="pointer-events:none; background:#eee;" readonly'; ?>>
+                            <option value="CC" <?php selected($cuenta->tipo_documento, 'CC'); ?>>C.C.</option>
+                            <option value="CE" <?php selected($cuenta->tipo_documento, 'CE'); ?>>C.E.</option>
+                            <option value="Pasaporte" <?php selected($cuenta->tipo_documento, 'Pasaporte'); ?>>Pasaporte</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="lud-label">Número Documento</label>
+                        <input type="text" name="numero_documento" class="lud-input" value="<?php echo esc_attr($cuenta->numero_documento); ?>" <?php echo $readonly_attr; ?>>
+                    </div>
+                </div>
+
+                <h4 style="border-bottom:1px solid #eee; padding-bottom:5px; margin-top:20px;">2. Información de Contacto (Editable)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div>
+                        <label class="lud-label">Dirección Residencia</label>
+                        <input type="text" name="direccion" class="lud-input" value="<?php echo esc_attr($cuenta->direccion_residencia); ?>" required>
+                    </div>
+                    <div>
+                        <label class="lud-label">Ciudad y País</label>
+                        <input type="text" name="ciudad" class="lud-input" value="<?php echo esc_attr($cuenta->ciudad_pais); ?>" required>
+                    </div>
+                    <div>
+                        <label class="lud-label">Teléfono</label>
+                        <input type="text" name="telefono" class="lud-input" value="<?php echo esc_attr($cuenta->telefono_contacto); ?>" required>
+                    </div>
+                    <div>
+                        <label class="lud-label">Correo Electrónico</label>
+                        <input type="email" name="email" class="lud-input" value="<?php echo esc_attr($user->user_email); ?>" required>
+                    </div>
+                </div>
+
+                <h4 style="border-bottom:1px solid #eee; padding-bottom:5px; margin-top:20px;">3. Datos Históricos del Fondo (Sensibles)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div>
+                        <label class="lud-label">Fecha de Ingreso</label>
+                        <input type="date" name="fecha_ingreso" class="lud-input" value="<?php echo esc_attr($cuenta->fecha_ingreso_fondo); ?>" <?php echo $readonly_attr; ?>>
+                    </div>
+                    <div>
+                        <label class="lud-label">Aporte Inicial Histórico ($)</label>
+                        <input type="number" name="aporte_inicial" class="lud-input" value="<?php echo esc_attr($cuenta->aporte_inicial); ?>" <?php echo $readonly_attr; ?>>
+                    </div>
+                </div>
+
+                <h4 style="border-bottom:1px solid #eee; padding-bottom:5px; margin-top:20px;">4. Perfil Financiero (Editable)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                    <div>
+                        <label class="lud-label">Actividad Económica</label>
+                        <input type="text" name="actividad" class="lud-input" value="<?php echo esc_attr($cuenta->actividad_economica); ?>">
+                    </div>
+                    <div>
+                        <label class="lud-label">Fuente de Ingresos</label>
+                        <input type="text" name="origen" class="lud-input" value="<?php echo esc_attr($cuenta->origen_fondos); ?>">
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label class="lud-label">Banco / Medio de Pago Habitual</label>
+                        <input type="text" name="banco" class="lud-input" value="<?php echo esc_attr($cuenta->banco_medio_pago); ?>">
+                    </div>
+                </div>
+
+                <h4 style="border-bottom:1px solid #eee; padding-bottom:5px; margin-top:20px;">5. Actualizar Documento</h4>
+                <div class="lud-form-group">
+                    <label class="lud-label">Nuevo PDF Documento Identidad (Opcional)</label>
+                    <?php if($cuenta->url_documento_id): ?>
+                        <small style="display:block; margin-bottom:5px;">Actual: <a href="<?php echo admin_url('admin-post.php?action=lud_ver_comprobante&file=documentos/'.$cuenta->url_documento_id); ?>" target="_blank">Ver Documento</a></small>
+                    <?php endif; ?>
+                    <input type="file" name="archivo_documento" class="lud-input" accept="application/pdf">
+                </div>
+
+                <div style="margin-top:30px; text-align:right;">
+                    <button type="submit" class="button button-primary button-hero">💾 Guardar Cambios y Registrar Log</button>
+                </div>
+            </form>
+        </div>
+        <?php
+    }
+
+    // --- PROCESAMIENTO DEL EDITOR ---
+    public function procesar_edicion_socio() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        $user_id = intval($_POST['user_id']);
+        check_admin_referer('lud_edit_user_'.$user_id, 'security');
+
+        global $wpdb;
+        $user = get_userdata($user_id);
+        $cuenta = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+
+        // 1. Verificar Bloqueo Sensible
+        $ultima_actualizacion = get_user_meta($user_id, 'lud_fecha_actualizacion_sensible', true);
+        $bloqueado = false;
+        if ( $ultima_actualizacion && (time() < strtotime('+1 year', strtotime($ultima_actualizacion))) ) {
+            $bloqueado = true;
+        }
+
+        $log_cambios = [];
+        $datos_cuenta_update = [];
+        $datos_user_update = [];
+
+        // --- DEFINICIÓN DE CAMPOS ---
+        // Campo POST => [Campo DB, Nombre Legible, Es Sensible?]
+        $mapa_campos = [
+            'nombre_completo'  => ['display_name', 'Nombre', true],
+            'fecha_nacimiento' => ['fecha_nacimiento', 'F. Nacimiento', true],
+            'tipo_documento'   => ['tipo_documento', 'Tipo Doc', true],
+            'numero_documento' => ['numero_documento', 'Num Doc', true],
+            'fecha_ingreso'    => ['fecha_ingreso_fondo', 'F. Ingreso', true],
+            'aporte_inicial'   => ['aporte_inicial', 'Aporte Inicial', true],
+            
+            'direccion'        => ['direccion_residencia', 'Dirección', false],
+            'ciudad'           => ['ciudad_pais', 'Ciudad', false],
+            'telefono'         => ['telefono_contacto', 'Teléfono', false],
+            'email'            => ['user_email', 'Email', false],
+            'actividad'        => ['actividad_economica', 'Actividad', false],
+            'origen'           => ['origen_fondos', 'Origen Fondos', false],
+            'banco'            => ['banco_medio_pago', 'Banco', false]
+        ];
+
+        // 2. Iterar y Detectar Cambios
+        $hubo_cambio_sensible = false;
+
+        foreach ($mapa_campos as $post_key => $config) {
+            $db_field = $config[0];
+            $label = $config[1];
+            $es_sensible = $config[2];
+
+            // Si está bloqueado y es sensible, ignoramos el input del formulario
+            if ( $bloqueado && $es_sensible ) continue;
+
+            $nuevo_valor = sanitize_text_field($_POST[$post_key]);
+            
+            // Obtener valor actual
+            $valor_actual = '';
+            if ( $db_field == 'display_name' || $db_field == 'user_email' ) {
+                $valor_actual = $user->$db_field;
+            } else {
+                $valor_actual = $cuenta->$db_field;
+            }
+
+            // Comparar (Uso != para no estricto tipos)
+            if ( $valor_actual != $nuevo_valor ) {
+                $log_cambios[] = "$label: '$valor_actual' -> '$nuevo_valor'";
+                
+                if ( $db_field == 'display_name' || $db_field == 'user_email' ) {
+                    $datos_user_update['ID'] = $user_id;
+                    $datos_user_update[$db_field] = $nuevo_valor;
+                } else {
+                    $datos_cuenta_update[$db_field] = $nuevo_valor;
+                }
+
+                if ( $es_sensible ) $hubo_cambio_sensible = true;
+            }
+        }
+
+        // 3. Procesar Archivo (Siempre editable)
+        if ( !empty($_FILES['archivo_documento']['name']) ) {
+            $file = $_FILES['archivo_documento'];
+            if ( $file['type'] == 'application/pdf' ) {
+                $upload_dir = wp_upload_dir();
+                $target_dir = $upload_dir['basedir'] . '/fondo_seguro/documentos/';
+                $filename = 'doc_update_' . $user_id . '_' . time() . '.pdf';
+                move_uploaded_file( $file['tmp_name'], $target_dir . $filename );
+                
+                $datos_cuenta_update['url_documento_id'] = $filename;
+                $log_cambios[] = "Documento ID: Actualizado";
+            }
+        }
+
+        // 4. Ejecutar Actualizaciones
+        if ( !empty($datos_user_update) ) wp_update_user($datos_user_update);
+        if ( !empty($datos_cuenta_update) ) $wpdb->update("{$wpdb->prefix}fondo_cuentas", $datos_cuenta_update, ['user_id' => $user_id]);
+
+        // 5. Registrar Log y Bloqueo
+        if ( !empty($log_cambios) ) {
+            // Si hubo cambio sensible, activamos el timer de 1 año
+            if ( $hubo_cambio_sensible ) {
+                update_user_meta($user_id, 'lud_fecha_actualizacion_sensible', current_time('mysql'));
+                $log_cambios[] = "[BLOQUEO ACTIVADO POR 1 AÑO]";
+            }
+
+            $detalle_log = "ADMIN EDICIÓN (" . wp_get_current_user()->display_name . "): " . implode(', ', $log_cambios);
+            
+            $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
+                'user_id' => $user_id,
+                'tipo' => 'aporte', // Usamos un tipo existente inofensivo
+                'monto' => 0,
+                'estado' => 'aprobado',
+                'detalle' => $detalle_log,
+                'aprobado_por' => get_current_user_id(),
+                'fecha_registro' => current_time('mysql'),
+                'fecha_aprobacion' => current_time('mysql')
+            ]);
+        }
+
+        wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=datos_actualizados") );
         exit;
     }
 

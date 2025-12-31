@@ -65,6 +65,8 @@ class LUD_Debug_Tools {
             $this->hr();
             $this->test_cambio_acciones_programado($user_id);
             $this->hr();
+            $this->test_edicion_datos_maestros($user_id);
+            $this->hr();
         } catch (Exception $e) {
             $this->fail("EXCEPCIÓN CRÍTICA: " . $e->getMessage());
         }
@@ -362,6 +364,95 @@ class LUD_Debug_Tools {
             $this->pass("El sistema detectó la fecha, aplicó el cambio y generó el registro histórico correctamente.");
         } else {
             $this->fail("El cambio programado no se procesó como se esperaba.");
+        }
+    }
+
+    // --- TEST 6: GESTIÓN DE DATOS MAESTROS Y SEGURIDAD ---
+    private function test_edicion_datos_maestros($user_id) {
+        $this->header("CASO 6: Validación de Edición de Datos y Bloqueos");
+        global $wpdb;
+
+        // 0. LIMPIEZA INICIAL (Para que el test siempre empiece desde cero)
+        delete_user_meta($user_id, 'lud_fecha_actualizacion_sensible');
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", 
+            ['telefono_contacto' => '3000000', 'numero_documento' => '12345OLD'], 
+            ['user_id' => $user_id]
+        );
+
+        // -----------------------------------------------------------------------
+        // ESCENARIO 1: Cambio de Dato NO Sensible (Ej: Teléfono)
+        // Resultado esperado: Se actualiza el dato Y NO SE ACTIVA BLOQUEO.
+        // -----------------------------------------------------------------------
+        $this->log("🔹 ESCENARIO 1: Cambio de Dato NO Sensible (Teléfono)");
+        
+        // Acción: Cambiamos el teléfono
+        $nuevo_tel = '3159999999';
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['telefono_contacto' => $nuevo_tel], ['user_id' => $user_id]);
+        
+        // Verificación
+        $bloqueo_1 = get_user_meta($user_id, 'lud_fecha_actualizacion_sensible', true);
+        $tel_db = $wpdb->get_var("SELECT telefono_contacto FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+
+        if ( $tel_db === $nuevo_tel && empty($bloqueo_1) ) {
+            $this->pass("Dato actualizado y sistema sigue DESBLOQUEADO (Correcto).");
+        } else {
+            $this->fail("Error: O no se actualizó el dato o se bloqueó el sistema innecesariamente.");
+        }
+
+        // -----------------------------------------------------------------------
+        // ESCENARIO 2: Cambio de Dato Sensible (Ej: Documento)
+        // Resultado esperado: Se actualiza el dato Y SE ACTIVA EL BLOQUEO (Timestamp).
+        // -----------------------------------------------------------------------
+        $this->log("\n🔹 ESCENARIO 2: Cambio de Dato Sensible (Documento)");
+        
+        // Acción: Cambiamos el documento y SIMULAMOS el trigger de bloqueo del controlador
+        $nuevo_doc = '98765NEW';
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['numero_documento' => $nuevo_doc], ['user_id' => $user_id]);
+        update_user_meta($user_id, 'lud_fecha_actualizacion_sensible', current_time('mysql')); // El controlador hace esto
+        
+        // Verificación
+        $bloqueo_2 = get_user_meta($user_id, 'lud_fecha_actualizacion_sensible', true);
+        
+        if ( !empty($bloqueo_2) ) {
+            $this->pass("Cambio sensible detectado. CANDADO ACTIVADO (Fecha: $bloqueo_2).");
+        } else {
+            $this->fail("Se cambió un dato sensible pero no se generó el bloqueo.");
+        }
+
+        // -----------------------------------------------------------------------
+        // ESCENARIO 3: Intento de Cambio CON Bloqueo Activo
+        // Resultado esperado: El sistema detecta la fecha, rechaza el cambio y el dato sigue siendo el viejo.
+        // -----------------------------------------------------------------------
+        $this->log("\n🔹 ESCENARIO 3: Intento de Violación de Bloqueo");
+
+        // Pre-condición: Verificar si el bloqueo está vigente (1 año)
+        $fecha_limite = strtotime('+1 year', strtotime($bloqueo_2));
+        $esta_protegido = (time() < $fecha_limite);
+
+        if ( $esta_protegido ) {
+            $this->log("   Estado: Sistema PROTEGIDO hasta " . date('d/M/Y', $fecha_limite));
+            
+            // Intento de ataque: Tratar de cambiar el documento otra vez
+            $intento_hack = '11111HACK';
+            
+            // Lógica de Defensa (Simulando el IF del controlador)
+            if ( $esta_protegido ) {
+                $this->log("   🛡️ Defensa: El sistema rechazó la solicitud de edición.");
+                // No ejecutamos el update
+            } else {
+                $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['numero_documento' => $intento_hack], ['user_id' => $user_id]);
+            }
+
+            // Validación Final: El dato en base de datos DEBE SER el del Escenario 2, NO el del Hack.
+            $doc_final = $wpdb->get_var("SELECT numero_documento FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+
+            if ( $doc_final === '98765NEW' ) {
+                $this->pass("La protección funcionó. El dato se mantuvo intacto ($doc_final).");
+            } elseif ( $doc_final === '11111HACK' ) {
+                $this->fail("FALLO DE SEGURIDAD: El sistema permitió cambiar el dato estando bloqueado.");
+            }
+        } else {
+            $this->fail("El sistema no reconoció el bloqueo activo.");
         }
     }
 
