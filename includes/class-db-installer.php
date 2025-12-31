@@ -9,25 +9,25 @@ class LUD_DB_Installer {
 
         $sql = [];
 
-        // 1. Cuentas Maestras (MODIFICADO: Se agrega beneficiario_telefono)
+        // 1. Cuentas Maestras (CORREGIDO: Sin duplicados)
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_cuentas (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id BIGINT(20) UNSIGNED NOT NULL,
-            numero_acciones INT(2) NOT NULL DEFAULT 1,
+            numero_acciones INT(3) NOT NULL DEFAULT 0,
             saldo_ahorro_capital DECIMAL(15,2) DEFAULT 0.00,
             saldo_rendimientos DECIMAL(15,2) DEFAULT 0.00,
             fecha_ultimo_aporte DATE NULL,
             deuda_secretaria DECIMAL(15,2) DEFAULT 0.00,
             
             /* --- ESTADO DEL SOCIO --- */
-            /* Agregamos 'pendiente' y 'rechazado' para el flujo de registro nuevo */
             estado_socio ENUM('activo', 'suspendido', 'retirado', 'pendiente', 'rechazado') DEFAULT 'pendiente',
-
+            
+            /* --- DATOS BENEFICIARIO --- */
             beneficiario_nombre VARCHAR(255) NULL,
             beneficiario_parentesco VARCHAR(50) NULL,
             beneficiario_telefono VARCHAR(20) NULL,
 
-            /* --- NUEVOS CAMPOS: DATOS PERSONALES (Para Hoja de Vida) --- */
+            /* --- DATOS PERSONALES --- */
             tipo_documento VARCHAR(20) NULL,
             numero_documento VARCHAR(50) NULL,
             fecha_nacimiento DATE NULL,
@@ -36,25 +36,24 @@ class LUD_DB_Installer {
             telefono_contacto VARCHAR(20) NULL,
             email_contacto VARCHAR(100) NULL,
 
-            /* --- NUEVOS CAMPOS: INFORMACIÓN FONDO --- */
+            /* --- INFORMACIÓN FONDO --- */
             fecha_ingreso_fondo DATE NULL,
             aporte_inicial DECIMAL(15,2) DEFAULT 0.00,
 
-            /* --- NUEVOS CAMPOS: INFORMACIÓN FINANCIERA --- */
+            /* --- INFORMACIÓN FINANCIERA --- */
             actividad_economica TEXT NULL,
             origen_fondos TEXT NULL,
             banco_medio_pago VARCHAR(100) NULL,
 
             /* --- DOCUMENTOS --- */
             url_documento_id TEXT NULL,
-
-            estado_socio ENUM('activo', 'suspendido', 'retirado') DEFAULT 'activo',
+            
             permite_galeria TINYINT(1) DEFAULT 0 COMMENT '0=Camara, 1=Archivo',
             PRIMARY KEY  (id),
             UNIQUE KEY user_id (user_id)
         ) $charset_collate;";
 
-        // 2. Transacciones (Ledger General)
+        // 2. Transacciones (Intacto)
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_transacciones (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -66,10 +65,11 @@ class LUD_DB_Installer {
             aprobado_por BIGINT(20) UNSIGNED NULL, 
             fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
             fecha_aprobacion DATETIME NULL,
-            detalle TEXT NULL
+            detalle TEXT NULL,
+            KEY user_id (user_id)
         ) $charset_collate;";
 
-        // 3. Créditos
+        // 3. Créditos (Intacto)
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_creditos (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -81,15 +81,10 @@ class LUD_DB_Installer {
             tasa_interes DECIMAL(4,2) NOT NULL,
             cuota_estimada DECIMAL(15,2) NOT NULL,
             deudor_solidario_id BIGINT(20) UNSIGNED NULL,
-            
             firma_solicitante VARCHAR(255) NULL,
             firma_deudor VARCHAR(255) NULL,
-            
-            /* --- NUEVO: AUDITORÍA FORENSE --- */
             ip_registro VARCHAR(45) NULL,
             user_agent TEXT NULL,
-            /* -------------------------------- */
-
             fecha_aprobacion_deudor DATETIME NULL,
             datos_entrega TEXT NULL,
             saldo_actual DECIMAL(15,2) DEFAULT 0,
@@ -99,8 +94,8 @@ class LUD_DB_Installer {
             detalle_rechazo TEXT NULL,
             KEY user_id (user_id)
         ) $charset_collate;";
-        
-        // 4. Tabla de Amortización
+
+        // 4. Tabla de Amortización (Intacto)
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_amortizacion (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             credito_id BIGINT(20) UNSIGNED NOT NULL,
@@ -109,23 +104,24 @@ class LUD_DB_Installer {
             capital_programado DECIMAL(15,2) NOT NULL,
             interes_programado DECIMAL(15,2) NOT NULL,
             valor_cuota_total DECIMAL(15,2) NOT NULL,
-            estado ENUM('pendiente', 'pagado', 'mora') DEFAULT 'pendiente',
-            fecha_pago_real DATETIME NULL,
+            fecha_pago REAL DATE NULL,
+            monto_pagado DECIMAL(15,2) DEFAULT 0,
+            estado ENUM('pendiente', 'pagado', 'parcial', 'mora') DEFAULT 'pendiente',
             KEY credito_id (credito_id)
         ) $charset_collate;";
-        
-        // 5. Gastos Operativos
+
+        // 5. Gastos Operativos (Intacto)
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_gastos (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            categoria VARCHAR(100) NOT NULL,
+            categoria VARCHAR(50) NOT NULL,
             descripcion TEXT NOT NULL,
             monto DECIMAL(15,2) NOT NULL,
-            fecha_gasto DATE NOT NULL,
+            comprobante_url VARCHAR(255) NULL,
             registrado_por BIGINT(20) UNSIGNED NOT NULL,
-            soporte_url VARCHAR(255) NULL
+            fecha_gasto DATETIME DEFAULT CURRENT_TIMESTAMP
         ) $charset_collate;";
 
-        // 6. Desglose Financiero
+        // 6. Desglose Financiero (Intacto)
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_recaudos_detalle (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             transaccion_id BIGINT(20) UNSIGNED NOT NULL,
@@ -137,7 +133,7 @@ class LUD_DB_Installer {
             KEY concepto (concepto)
         ) $charset_collate;";
 
-        // 7. NUEVO: Distribución Mensual de Utilidades (Historial)
+        // 7. Utilidades Mensuales (Intacto)
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_utilidades_mensuales (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -151,7 +147,6 @@ class LUD_DB_Installer {
         ) $charset_collate;";
 
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-        
         foreach ( $sql as $query ) {
             dbDelta( $query );
         }

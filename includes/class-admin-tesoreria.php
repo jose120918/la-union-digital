@@ -10,10 +10,9 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_aprobar_pago', array( $this, 'procesar_aprobacion' ) );
         add_action( 'admin_post_lud_rechazar_pago', array( $this, 'procesar_rechazo' ) );
         add_action( 'admin_post_lud_aprobar_desembolso', array( $this, 'procesar_desembolso' ) );
-        // Nota: El cierre mensual ahora es automático, no requiere hook de botón manual
         add_action( 'admin_post_lud_liquidacion_anual', array( $this, 'procesar_liquidacion_anual' ) );
-        add_action( 'admin_post_lud_actualizar_acciones', array( $this, 'procesar_actualizacion_acciones' ) );
-        // --- NUEVOS HOOKS DE GESTIÓN ---
+        
+        // Hooks de Gestión (Nuevos)
         add_action( 'admin_post_lud_actualizar_acciones', array( $this, 'procesar_actualizacion_acciones' ) );
         add_action( 'admin_post_lud_aprobar_registro', array( $this, 'procesar_aprobacion_registro' ) );
         add_action( 'admin_post_lud_rechazar_registro', array( $this, 'procesar_rechazo_registro' ) );
@@ -763,12 +762,9 @@ class LUD_Admin_Tesoreria {
         $anio = date('Y');
         
         // 1. Marcar como LIQUIDADO (Pagado en efectivo)
-        // Esto cambia el estado de 'provisional' a 'liquidado' en la base de datos.
-        // Al hacer esto, el sistema asume que el dinero salió de la caja.
         $wpdb->query("UPDATE {$wpdb->prefix}fondo_utilidades_mensuales SET estado = 'liquidado' WHERE anio = $anio AND estado = 'provisional'");
         
-        // NO sumamos a 'saldo_rendimientos' de la cuenta porque el dinero se entregó.
-        // La tabla de utilidades queda como el registro histórico del pago.
+        // Nota: NO sumamos al saldo porque el dinero se entrega físicamente.
 
         wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=liquidacion_exito') );
         exit;
@@ -890,6 +886,76 @@ class LUD_Admin_Tesoreria {
         $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['estado_socio' => 'rechazado'], ['id' => $cuenta_id]);
         wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=socio_rechazado') );
         exit;
+    }
+
+    // --- FUNCIONES DE GESTIÓN NUEVAS ---
+
+    public function procesar_actualizacion_acciones() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        check_admin_referer('lud_update_shares', 'security');
+        
+        global $wpdb;
+        $user_id = intval($_POST['user_id']);
+        $nuevas = intval($_POST['nuevas_acciones']);
+        $motivo = sanitize_text_field($_POST['motivo_cambio']);
+        
+        $anteriores = $wpdb->get_var("SELECT numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+        
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['numero_acciones' => $nuevas], ['user_id' => $user_id]);
+        
+        // Log en historial
+        $detalle = "ADMIN: Cambio de acciones ($anteriores -> $nuevas). Motivo: $motivo";
+        $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
+            'user_id' => $user_id, 'tipo' => 'aporte', 'monto' => 0, 'estado' => 'aprobado',
+            'detalle' => $detalle, 'aprobado_por' => get_current_user_id(), 'fecha_registro' => current_time('mysql')
+        ]);
+        
+        wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=acciones_ok") );
+        exit;
+    }
+
+    public function procesar_aprobacion_registro() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        global $wpdb;
+        $cuenta_id = intval($_POST['cuenta_id']);
+        check_admin_referer('aprobar_socio_'.$cuenta_id, 'security');
+
+        // 1. Activar cuenta
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['estado_socio' => 'activo'], ['id' => $cuenta_id]);
+        
+        // 2. Obtener datos para registro inicial
+        $cuenta = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE id = $cuenta_id");
+        
+        // 3. Registrar aporte inicial si existe
+        if ( $cuenta->aporte_inicial > 0 ) {
+            $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
+                'user_id' => $cuenta->user_id, 'tipo' => 'aporte', 'monto' => $cuenta->aporte_inicial,
+                'estado' => 'aprobado', 'detalle' => 'Aporte Inicial por Registro', 
+                'aprobado_por' => get_current_user_id(), 'fecha_registro' => current_time('mysql')
+            ]);
+        }
+
+        wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=socio_aprobado') );
+        exit;
+    }
+
+    public function procesar_rechazo_registro() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        global $wpdb;
+        $cuenta_id = intval($_POST['cuenta_id']);
+        check_admin_referer('rechazar_socio_'.$cuenta_id, 'security');
+
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['estado_socio' => 'rechazado'], ['id' => $cuenta_id]);
+        wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=socio_rechazado') );
+        exit;
+    }
+
+    // --- FUNCIÓN PUENTE PARA DEBUG TOOLS ---
+    public function calcular_utilidad_mes_actual() {
+        $mes = intval(date('m'));
+        $anio = intval(date('Y'));
+        // Ajuste para pruebas: calcular mes actual
+        $this->calcular_utilidad_mes_especifico($mes, $anio);
     }
 
 } // FIN DE LA CLASE
