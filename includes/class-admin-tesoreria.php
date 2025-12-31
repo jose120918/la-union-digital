@@ -675,14 +675,84 @@ class LUD_Admin_Tesoreria {
             }
 
             if ( $dinero_disponible > 0 ) {
-                $credito_activo = $wpdb->get_row("SELECT id FROM {$wpdb->prefix}fondo_creditos WHERE user_id = {$tx->user_id} AND estado = 'activo' LIMIT 1");
+                $creditos = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = {$tx->user_id} AND estado IN ('activo', 'mora')");
 
-                if ($credito_activo) {
-                    $wpdb->insert( $table_recaudos, ['transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 'concepto' => 'capital_credito', 'monto' => $dinero_disponible, 'fecha_recaudo' => current_time('mysql')] );
-                    $wpdb->query( $wpdb->prepare("UPDATE {$wpdb->prefix}fondo_creditos SET saldo_actual = saldo_actual - %f WHERE id = %d", $dinero_disponible, $credito_activo->id) );
-                } else {
-                    $ahorro_cobrado += $dinero_disponible;
-                    $wpdb->insert( $table_recaudos, ['transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 'concepto' => 'ahorro', 'monto' => $dinero_disponible, 'fecha_recaudo' => current_time('mysql')] );
+                foreach ($creditos as $cred) {
+                    if ( $dinero_disponible <= 0 ) break;
+
+                    $saldo = floatval($cred->saldo_actual);
+                    
+                    // A. CALCULAR MORA (Solo Ágil)
+                    $cobro_mora = 0;
+                    if ( $cred->tipo_credito == 'agil' ) {
+                        $f_aprob = new DateTime($cred->fecha_aprobacion);
+                        $f_venc = clone $f_aprob;
+                        $f_venc->modify('+1 month');
+                        $hoy = new DateTime();
+
+                        if ( $hoy > $f_venc ) {
+                            $dias = $hoy->diff($f_venc)->days;
+                            $mora_teorica = $saldo * 0.04 * ($dias / 30);
+                            
+                            // Cobramos lo que alcance
+                            $cobro_mora = min($dinero_disponible, $mora_teorica);
+                            
+                            if ( $cobro_mora > 0 ) {
+                                $dinero_disponible -= $cobro_mora;
+                                $wpdb->insert( $table_recaudos, [
+                                    'transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 
+                                    'concepto' => 'interes_mora_credito', // Concepto Nuevo
+                                    'monto' => $cobro_mora, 'fecha_recaudo' => current_time('mysql')
+                                ]);
+                            }
+                        }
+                    }
+
+                    // B. CALCULAR INTERÉS CORRIENTE (Solo Ágil por ahora en este bloque dinámico)
+                    // Para créditos corrientes, el interés suele ir en la cuota fija, pero aquí priorizamos Ágil.
+                    $cobro_interes = 0;
+                    if ( $cred->tipo_credito == 'agil' && $dinero_disponible > 0 ) {
+                        $interes_teorico = $saldo * 0.015;
+                        $cobro_interes = min($dinero_disponible, $interes_teorico);
+                        
+                        if ( $cobro_interes > 0 ) {
+                            $dinero_disponible -= $cobro_interes;
+                            $wpdb->insert( $table_recaudos, [
+                                'transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 
+                                'concepto' => 'interes_credito', 
+                                'monto' => $cobro_interes, 'fecha_recaudo' => current_time('mysql')
+                            ]);
+                        }
+                    }
+
+                    // C. ABONO A CAPITAL (Lo que sobre)
+                    if ( $dinero_disponible > 0 ) {
+                        // El abono no puede superar el saldo
+                        $abono_capital = min($dinero_disponible, $saldo);
+                        $dinero_disponible -= $abono_capital;
+                        
+                        $wpdb->insert( $table_recaudos, [
+                            'transaccion_id' => $tx->id, 'user_id' => $tx->user_id, 
+                            'concepto' => 'capital_credito', 
+                            'monto' => $abono_capital, 'fecha_recaudo' => current_time('mysql')
+                        ]);
+
+                        // Actualizar Saldo en DB
+                        $nuevo_saldo = $saldo - $abono_capital;
+                        $nuevo_estado = ($nuevo_saldo <= 0) ? 'pagado' : 'activo';
+                        
+                        // Si pagó y tenía mora, limpiamos estado
+                        if ( $cred->estado == 'mora' && $nuevo_estado == 'activo' ) {
+                             // Sigue en mora si debe (para corrientes), pero en Ágil el estado depende del tiempo.
+                             // Dejamos 'activo' o 'pagado'.
+                        }
+
+                        $wpdb->update( 
+                            "{$wpdb->prefix}fondo_creditos", 
+                            ['saldo_actual' => $nuevo_saldo, 'estado' => $nuevo_estado], 
+                            ['id' => $cred->id] 
+                        );
+                    }
                 }
             }
 

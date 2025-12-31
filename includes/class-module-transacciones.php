@@ -27,39 +27,71 @@ class LUD_Module_Transacciones {
         $debe_secretaria = 0;
         $debe_multa = 0;
 
-        // Fecha de corte: ¿Desde cuándo debe?
+        // --- 1. DEUDA ADMINISTRATIVA ---
         $fecha_ultimo = $cuenta->fecha_ultimo_aporte ? $cuenta->fecha_ultimo_aporte : date('Y-m-01');
-        
         $inicio = new DateTime( $fecha_ultimo );
         $inicio->modify( 'first day of next month' );
-        $hoy = new DateTime(); // Hoy
+        $hoy = new DateTime(); 
 
-        // Iterar mes a mes desde el último pago hasta hoy
         while ( $inicio <= $hoy ) {
             $debe_ahorro += $valor_cuota_ahorro;
             $debe_secretaria += $valor_cuota_secretaria;
             
-            // Regla de Multa: Día 5
             $limite = clone $inicio;
             $limite->setDate( $inicio->format('Y'), $inicio->format('m'), 5 );
             
             if ( $hoy > $limite ) {
-                // Cobramos multa por cada día de retraso
                 $dias = $hoy->diff($limite)->days;
                 $debe_multa += ($dias * 1000 * $acciones);
             }
             $inicio->modify( 'first day of next month' );
         }
 
-        // Deuda de Créditos (Saldo Capital Total)
-        $deuda_creditos = $wpdb->get_var( $wpdb->prepare("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE user_id = %d AND estado IN ('activo', 'mora')", $user_id) );
-        $deuda_creditos = floatval($deuda_creditos);
+        // --- 2. DEUDA DE CRÉDITOS (CAPITAL + INTERESES) ---
+        $creditos_activos = $wpdb->get_results( $wpdb->prepare("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = %d AND estado IN ('activo', 'mora')", $user_id) );
+        
+        $deuda_capital = 0;
+        $deuda_interes_corriente = 0;
+        $deuda_interes_mora = 0;
+
+        foreach ($creditos_activos as $credito) {
+            $saldo = floatval($credito->saldo_actual);
+            $deuda_capital += $saldo;
+
+            // LÓGICA CRÉDITO ÁGIL
+            if ( $credito->tipo_credito == 'agil' && $saldo > 0 ) {
+                // A. Interés Corriente (1.5% del saldo actual)
+                // Se debe pagar siempre que haya saldo.
+                $deuda_interes_corriente += ($saldo * 0.015);
+
+                // B. Interés Mora (4% si está vencido)
+                $f_aprob = new DateTime($credito->fecha_aprobacion);
+                $f_venc = clone $f_aprob;
+                $f_venc->modify('+1 month'); // Vence al mes exacto
+
+                if ( $hoy > $f_venc ) {
+                    $dias_tarde = $hoy->diff($f_venc)->days;
+                    // Fórmula: Saldo * 4% * (Días Tarde / 30)
+                    $mora_calculada = $saldo * 0.04 * ($dias_tarde / 30);
+                    $deuda_interes_mora += $mora_calculada;
+                }
+            }
+            // Nota: Para créditos corrientes, el interés ya suele estar en la cuota fija o tabla de amortización, 
+            // pero aquí nos enfocamos en el Ágil como pediste.
+        }
 
         return [
             'ahorro' => $debe_ahorro,
             'secretaria' => $debe_secretaria,
             'multa' => $debe_multa,
-            'creditos' => $deuda_creditos,
+            
+            // Desglose Créditos
+            'creditos_capital' => $deuda_capital,
+            'creditos_interes' => $deuda_interes_corriente,
+            'creditos_mora' => $deuda_interes_mora,
+            
+            // Totales para sugerencias
+            'creditos' => $deuda_capital + $deuda_interes_corriente + $deuda_interes_mora,
             'total_admin' => $debe_ahorro + $debe_secretaria + $debe_multa,
             'cuenta_obj' => $cuenta
         ];
