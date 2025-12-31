@@ -16,6 +16,7 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_actualizar_acciones', array( $this, 'procesar_actualizacion_acciones' ) );
         add_action( 'admin_post_lud_aprobar_registro', array( $this, 'procesar_aprobacion_registro' ) );
         add_action( 'admin_post_lud_rechazar_registro', array( $this, 'procesar_rechazo_registro' ) );
+        add_action( 'admin_post_lud_cancelar_cambio_acciones', array( $this, 'procesar_cancelacion_acciones' ) );
     }
 
     public function register_menu() {
@@ -30,6 +31,7 @@ class LUD_Admin_Tesoreria {
         // --- AUTOMATIZACIÓN: CIERRE MENSUAL ---
         // Se ejecuta silenciosamente al cargar el dashboard si detecta que falta cerrar el mes anterior.
         $this->verificar_cierre_automatico();
+        $this->ejecutar_cambios_programados();
 
         $view = isset($_GET['view']) ? $_GET['view'] : 'dashboard';
         
@@ -57,6 +59,45 @@ class LUD_Admin_Tesoreria {
             $this->render_historial_intereses();
         }
         echo '</div>';
+    }
+
+    /**
+     * Revisa si hay cambios de acciones programados que ya deban aplicarse hoy.
+     * Se ejecuta al cargar la tesorería.
+     */
+    public function ejecutar_cambios_programados() {
+        // Buscamos usuarios con cambios pendientes
+        $usuarios = get_users(array('meta_key' => 'lud_acciones_programadas'));
+        $hoy = date('Y-m-d');
+
+        foreach ($usuarios as $user) {
+            $programado = get_user_meta($user->ID, 'lud_acciones_programadas', true);
+            
+            // Si existe programación y la fecha de hoy es igual o mayor a la fecha efectiva
+            if ( $programado && $hoy >= $programado['fecha_efectiva'] ) {
+                global $wpdb;
+                
+                // 1. Obtener valor anterior para el log
+                $anteriores = $wpdb->get_var("SELECT numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = {$user->ID}");
+                
+                // 2. Aplicar el cambio en la Tabla Maestra
+                $wpdb->update(
+                    "{$wpdb->prefix}fondo_cuentas",
+                    ['numero_acciones' => intval($programado['cantidad'])],
+                    ['user_id' => $user->ID]
+                );
+
+                // 3. Registrar en Historial (Log de Auditoría)
+                $detalle = "SISTEMA: Cambio de acciones efectivo ($anteriores -> {$programado['cantidad']}). Motivo: " . $programado['motivo'];
+                $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
+                    'user_id' => $user->ID, 'tipo' => 'aporte', 'monto' => 0, 'estado' => 'aprobado',
+                    'detalle' => $detalle, 'aprobado_por' => get_current_user_id(), 'fecha_registro' => current_time('mysql')
+                ]);
+
+                // 4. Borrar la programación ya que fue aplicada
+                delete_user_meta($user->ID, 'lud_acciones_programadas');
+            }
+        }
     }
 
     // --- VISTA 1: TABLERO GENERAL ---
@@ -325,6 +366,9 @@ class LUD_Admin_Tesoreria {
         
         $tx_module = new LUD_Module_Transacciones(); 
         $deuda_info = $tx_module->calcular_deuda_usuario($user_id);
+
+        // Verificar si hay cambio programado
+        $cambio_pendiente = get_user_meta($user_id, 'lud_acciones_programadas', true);
         ?>
         
         <p><a href="?page=lud-tesoreria&view=buscar_socio" class="button">← Volver al Directorio</a></p>
@@ -333,7 +377,7 @@ class LUD_Admin_Tesoreria {
             <div class="lud-card" style="flex:1; min-width:300px;">
                 <h3>👤 <?php echo $user->display_name; ?></h3>
                 <table style="width:100%; text-align:left;">
-                    <tr><th>Acciones:</th><td><?php echo $cuenta->numero_acciones; ?></td></tr>
+                    <tr><th>Acciones Hoy:</th><td><?php echo $cuenta->numero_acciones; ?></td></tr>
                     <tr><th>Estado:</th><td><?php echo ucfirst($cuenta->estado_socio); ?></td></tr>
                     <tr><th>Beneficiario:</th><td><?php echo $cuenta->beneficiario_nombre; ?></td></tr>
                     <tr><th>Contacto Ben:</th><td><?php echo isset($cuenta->beneficiario_telefono) ? $cuenta->beneficiario_telefono : '-'; ?></td></tr>
@@ -361,54 +405,46 @@ class LUD_Admin_Tesoreria {
                     </div>
                 </div>
             </div>
-
-            <?php if ( current_user_can('lud_manage_tesoreria') ): ?>
-        <div class="lud-card" style="margin-top:20px; border-left:5px solid #2980b9;">
-            <h3>🗳️ Gestión de Acciones</h3>
-            <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="background:#f1f1f1; padding:15px; border-radius:5px; display:flex; flex-wrap:wrap; align-items:center; gap:15px;">
-                <input type="hidden" name="action" value="lud_actualizar_acciones">
-                <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
-                <?php wp_nonce_field('lud_update_shares', 'security'); ?>
-                
-                <div>
-                    <label style="font-weight:bold; display:block;">Acciones:</label>
-                    <input type="number" name="nuevas_acciones" value="<?php echo $cuenta->numero_acciones; ?>" min="0" max="100" style="width:80px; text-align:center;">
-                </div>
-                
-                <div style="flex:1;">
-                    <label style="font-weight:bold; display:block;">Motivo del Cambio (Obligatorio):</label>
-                    <input type="text" name="motivo_cambio" placeholder="Ej: Compra inicial, Venta de acciones..." required style="width:100%;">
-                </div>
-                
-                <div style="align-self:flex-end;">
-                    <button class="button button-primary">Actualizar</button>
-                </div>
-            </form>
-        </div>
-        <?php endif; ?>
         </div>
 
         <div class="lud-card" style="margin-top:20px; border-left:5px solid #2980b9;">
             <h3>🗳️ Gestión de Acciones</h3>
-            <p>Modificar el número de acciones de este socio. Esta acción quedará registrada en el historial.</p>
             
-            <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="background:#f1f1f1; padding:15px; border-radius:5px; display:flex; align-items:center; gap:15px;">
-                <input type="hidden" name="action" value="lud_actualizar_acciones">
-                <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
-                <?php wp_nonce_field('lud_update_shares', 'security'); ?>
-                
-                <div>
-                    <label style="font-weight:bold;">Acciones Actuales:</label>
-                    <input type="number" name="nuevas_acciones" value="<?php echo $cuenta->numero_acciones; ?>" min="0" max="100" style="width:80px; text-align:center;">
+            <?php if ( $cambio_pendiente ): ?>
+                <div class="lud-alert success" style="background:#e3f2fd; border:1px solid #2196f3; color:#0d47a1; padding:15px; border-radius:5px;">
+                    <strong>🕒 Cambio Programado:</strong><br>
+                    Este socio pasará a tener <strong><?php echo $cambio_pendiente['cantidad']; ?> acciones</strong> a partir del 
+                    <strong><?php echo date_i18n('d de F Y', strtotime($cambio_pendiente['fecha_efectiva'])); ?></strong>.
+                    <br><small>Motivo: <?php echo $cambio_pendiente['motivo']; ?></small>
+                    
+                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="margin-top:10px;">
+                        <input type="hidden" name="action" value="lud_cancelar_cambio_acciones">
+                        <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
+                        <?php wp_nonce_field('lud_cancel_shares', 'security'); ?>
+                        <button class="button button-small button-link-delete" style="color:red;">Cancelar programación</button>
+                    </form>
                 </div>
+            <?php else: ?>
+                <p>Modificar el número de acciones. <strong>Nota:</strong> El cambio se hará efectivo automáticamente el día 1 del próximo mes.</p>
                 
-                <div>
-                    <label style="font-weight:bold;">Motivo del Cambio:</label>
-                    <input type="text" name="motivo_cambio" placeholder="Ej: Compra inicial, Venta de acciones..." required style="width:300px;">
-                </div>
-                
-                <button class="button button-primary">Actualizar Acciones</button>
-            </form>
+                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="background:#f1f1f1; padding:15px; border-radius:5px; display:flex; align-items:center; gap:15px;">
+                    <input type="hidden" name="action" value="lud_actualizar_acciones">
+                    <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
+                    <?php wp_nonce_field('lud_update_shares', 'security'); ?>
+                    
+                    <div>
+                        <label style="font-weight:bold;">Acciones Actuales:</label>
+                        <input type="number" name="nuevas_acciones" value="<?php echo $cuenta->numero_acciones; ?>" min="0" max="100" style="width:80px; text-align:center;">
+                    </div>
+                    
+                    <div style="flex-grow:1;">
+                        <label style="font-weight:bold;">Motivo del Cambio:</label>
+                        <input type="text" name="motivo_cambio" placeholder="Ej: Aumento de capacidad, Ajuste voluntario..." required style="width:100%;">
+                    </div>
+                    
+                    <button class="button button-primary">Programar Cambio</button>
+                </form>
+            <?php endif; ?>
         </div>
 
         <div class="lud-card" style="margin-top:20px;">
@@ -786,6 +822,7 @@ class LUD_Admin_Tesoreria {
         $this->calcular_utilidad_mes_especifico($mes, $anio);
     }
 
+    // Reemplaza la lógica inmediata por la lógica programada
     public function procesar_actualizacion_acciones() {
         if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
         check_admin_referer('lud_update_shares', 'security');
@@ -795,33 +832,30 @@ class LUD_Admin_Tesoreria {
         $nuevas = intval($_POST['nuevas_acciones']);
         $motivo = sanitize_text_field($_POST['motivo_cambio']);
         
-        // 1. Obtener anteriores para el log
-        $anteriores = $wpdb->get_var("SELECT numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+        // Calcular el 1 del próximo mes
+        $fecha_efectiva = date('Y-m-01', strtotime('first day of next month'));
         
-        // 2. Actualizar
-        $wpdb->update(
-            "{$wpdb->prefix}fondo_cuentas",
-            ['numero_acciones' => $nuevas],
-            ['user_id' => $user_id]
-        );
+        // Guardar programación (NO actualizamos la tabla de cuentas todavía)
+        update_user_meta($user_id, 'lud_acciones_programadas', [
+            'cantidad' => $nuevas,
+            'motivo' => $motivo,
+            'fecha_efectiva' => $fecha_efectiva
+        ]);
         
-        // 3. Crear Log en Transacciones (Monto 0, Estado Aprobado)
-        $detalle_log = "ADMIN: Cambio de acciones de $anteriores a $nuevas. Motivo: $motivo";
-        $wpdb->insert(
-            "{$wpdb->prefix}fondo_transacciones",
-            array(
-                'user_id' => $user_id,
-                'tipo' => 'aporte', // Usamos aporte genérico
-                'monto' => 0,
-                'comprobante_url' => '',
-                'estado' => 'aprobado',
-                'detalle' => $detalle_log,
-                'aprobado_por' => get_current_user_id(),
-                'fecha_aprobacion' => current_time('mysql')
-            )
-        );
+        // Redirigimos con mensaje de éxito "programado"
+        wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=programado") );
+        exit;
+    }
+
+    // Nueva función para cancelar si te equivocaste antes de que llegue el día 1
+    public function procesar_cancelacion_acciones() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        check_admin_referer('lud_cancel_shares', 'security');
         
-        wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=acciones_ok") );
+        $user_id = intval($_POST['user_id']);
+        delete_user_meta($user_id, 'lud_acciones_programadas');
+
+        wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=cancelado") );
         exit;
     }
 

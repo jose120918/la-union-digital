@@ -62,6 +62,9 @@ class LUD_Debug_Tools {
             $this->test_justicia_distribucion_utilidades($user_id);
             $this->hr();
             $this->test_liquidez_reservada();
+            $this->hr();
+            $this->test_cambio_acciones_programado($user_id);
+            $this->hr();
         } catch (Exception $e) {
             $this->fail("EXCEPCIÓN CRÍTICA: " . $e->getMessage());
         }
@@ -307,6 +310,59 @@ class LUD_Debug_Tools {
             $wpdb->insert("{$wpdb->prefix}fondo_cuentas", ['user_id' => $uid, 'numero_acciones' => 1, 'estado_socio' => 'activo']);
         }
         return $user->ID;
+    }
+
+    // --- TEST 5: CAMBIO DE ACCIONES PROGRAMADO ---
+    private function test_cambio_acciones_programado($user_id) {
+        $this->header("CASO 5: Automatización de Cambio de Acciones");
+        global $wpdb;
+
+        // 1. Preparar Escenario: Usuario Test inicia con 5 acciones
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['numero_acciones' => 5], ['user_id' => $user_id]);
+        
+        // 2. Programar un cambio "trampa" para AYER
+        // (Al poner fecha pasada, simulamos que hoy ya es el día de ejecución)
+        $meta_data = [
+            'cantidad' => 10, // Objetivo: Subir a 10 acciones
+            'motivo' => 'Test Automatizado Debug ' . time(),
+            'fecha_efectiva' => date('Y-m-d', strtotime('-1 day')) 
+        ];
+        update_user_meta($user_id, 'lud_acciones_programadas', $meta_data);
+
+        $this->log("🔹 ESTADO INICIAL:");
+        $this->log("   - Acciones en DB: 5");
+        $this->log("   - Programación: Subir a 10 (Fecha efectiva: Ayer)");
+
+        // 3. Ejecutar el Disparador (Trigger) manualmente
+        if ( ! class_exists('LUD_Admin_Tesoreria') ) require_once LUD_PLUGIN_DIR . 'includes/class-admin-tesoreria.php';
+        
+        $tesoreria = new LUD_Admin_Tesoreria();
+        
+        if ( method_exists($tesoreria, 'ejecutar_cambios_programados') ) {
+            $this->log("   ⚡ Ejecutando disparador de Tesorería...");
+            $tesoreria->ejecutar_cambios_programados();
+        } else {
+            $this->fail("No se pudo invocar 'ejecutar_cambios_programados'. ¿Lo cambiaste a PUBLIC?");
+            return;
+        }
+
+        // 4. Validar Resultados
+        $acciones_post = $wpdb->get_var("SELECT numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+        $meta_post = get_user_meta($user_id, 'lud_acciones_programadas', true);
+        
+        // Verificar si se creó el log en el historial
+        $log_existe = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = $user_id AND detalle LIKE '%Test Automatizado Debug%'");
+
+        $this->log("\n🔹 RESULTADOS POST-EJECUCIÓN:");
+        $this->log("   - Acciones Actuales: $acciones_post (Esperado: 10)");
+        $this->log("   - Meta Programación: " . ($meta_post ? 'Persiste (Error)' : 'Eliminado (Correcto)'));
+        $this->log("   - Log de Auditoría:  " . ($log_existe ? 'Creado (Correcto)' : 'No encontrado (Error)'));
+
+        if ( intval($acciones_post) === 10 && empty($meta_post) && $log_existe ) {
+            $this->pass("El sistema detectó la fecha, aplicó el cambio y generó el registro histórico correctamente.");
+        } else {
+            $this->fail("El cambio programado no se procesó como se esperaba.");
+        }
     }
 
     private function log($msg) { $this->log[] = $msg; }
