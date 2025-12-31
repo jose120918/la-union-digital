@@ -659,6 +659,15 @@ class LUD_Debug_Tools {
         ob_end_clean();
     }
 
+    // --- HELPER DE LIMPIEZA PARA TESTS ---
+    private function reset_db_test($user_id) {
+        global $wpdb;
+        // Borrar créditos, transacciones y recaudos del usuario de prueba
+        $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id");
+        $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = $user_id");
+        $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE user_id = $user_id");
+    }
+
     private function log($msg) { $this->log[] = $msg; }
     private function hr() { $this->log[] = "----------------------------------------------------------------"; }
     private function header($msg) { $this->log[] = "\n>>> $msg <<<"; }
