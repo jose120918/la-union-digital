@@ -17,9 +17,37 @@ class LUD_DB_Installer {
             saldo_ahorro_capital DECIMAL(15,2) DEFAULT 0.00,
             saldo_rendimientos DECIMAL(15,2) DEFAULT 0.00,
             fecha_ultimo_aporte DATE NULL,
+            deuda_secretaria DECIMAL(15,2) DEFAULT 0.00,
+            
+            /* --- ESTADO DEL SOCIO --- */
+            /* Agregamos 'pendiente' y 'rechazado' para el flujo de registro nuevo */
+            estado_socio ENUM('activo', 'suspendido', 'retirado', 'pendiente', 'rechazado') DEFAULT 'pendiente',
+
             beneficiario_nombre VARCHAR(255) NULL,
             beneficiario_parentesco VARCHAR(50) NULL,
             beneficiario_telefono VARCHAR(20) NULL,
+
+            /* --- NUEVOS CAMPOS: DATOS PERSONALES (Para Hoja de Vida) --- */
+            tipo_documento VARCHAR(20) NULL,
+            numero_documento VARCHAR(50) NULL,
+            fecha_nacimiento DATE NULL,
+            direccion_residencia TEXT NULL,
+            ciudad_pais VARCHAR(100) NULL,
+            telefono_contacto VARCHAR(20) NULL,
+            email_contacto VARCHAR(100) NULL,
+
+            /* --- NUEVOS CAMPOS: INFORMACIÓN FONDO --- */
+            fecha_ingreso_fondo DATE NULL,
+            aporte_inicial DECIMAL(15,2) DEFAULT 0.00,
+
+            /* --- NUEVOS CAMPOS: INFORMACIÓN FINANCIERA --- */
+            actividad_economica TEXT NULL,
+            origen_fondos TEXT NULL,
+            banco_medio_pago VARCHAR(100) NULL,
+
+            /* --- DOCUMENTOS --- */
+            url_documento_id TEXT NULL,
+
             estado_socio ENUM('activo', 'suspendido', 'retirado') DEFAULT 'activo',
             permite_galeria TINYINT(1) DEFAULT 0 COMMENT '0=Camara, 1=Archivo',
             PRIMARY KEY  (id),

@@ -12,6 +12,11 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_aprobar_desembolso', array( $this, 'procesar_desembolso' ) );
         // Nota: El cierre mensual ahora es automático, no requiere hook de botón manual
         add_action( 'admin_post_lud_liquidacion_anual', array( $this, 'procesar_liquidacion_anual' ) );
+        add_action( 'admin_post_lud_actualizar_acciones', array( $this, 'procesar_actualizacion_acciones' ) );
+        // --- NUEVOS HOOKS DE GESTIÓN ---
+        add_action( 'admin_post_lud_actualizar_acciones', array( $this, 'procesar_actualizacion_acciones' ) );
+        add_action( 'admin_post_lud_aprobar_registro', array( $this, 'procesar_aprobacion_registro' ) );
+        add_action( 'admin_post_lud_rechazar_registro', array( $this, 'procesar_rechazo_registro' ) );
     }
 
     public function register_menu() {
@@ -134,6 +139,48 @@ class LUD_Admin_Tesoreria {
                 </div>
             <?php endif; ?>
 
+        <?php endif; ?>
+
+        <?php 
+        $nuevos_socios = $wpdb->get_results("SELECT u.display_name, c.* FROM {$wpdb->prefix}fondo_cuentas c JOIN {$wpdb->users} u ON c.user_id = u.ID WHERE c.estado_socio = 'pendiente'");
+        if ( ! empty($nuevos_socios) && $puede_editar ): 
+        ?>
+        <div class="lud-card" style="border-left: 5px solid #2980b9; background:#f4faff;">
+            <h3>👤 Solicitudes de Ingreso Pendientes</h3>
+            <table class="widefat striped">
+                <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Aporte Inicial</th><th>Acciones</th></tr></thead>
+                <tbody>
+                <?php foreach($nuevos_socios as $ns): ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo $ns->display_name; ?></strong><br>
+                            <small><?php echo $ns->email_contacto; ?></small>
+                        </td>
+                        <td><?php echo $ns->tipo_documento . ' ' . $ns->numero_documento; ?></td>
+                        <td><?php echo $ns->telefono_contacto; ?></td>
+                        <td>$ <?php echo number_format($ns->aporte_inicial); ?></td>
+                        <td>
+                            <div style="display:flex; gap:5px;">
+                                <a href="<?php echo admin_url('admin-post.php?action=lud_ver_comprobante&file=documentos/'.$ns->url_documento_id); ?>" target="_blank" class="button button-small" title="Ver PDF Documento">📄 PDF</a>
+                                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
+                                    <input type="hidden" name="action" value="lud_aprobar_registro">
+                                    <input type="hidden" name="cuenta_id" value="<?php echo $ns->id; ?>">
+                                    <?php wp_nonce_field('aprobar_socio_'.$ns->id, 'security'); ?>
+                                    <button class="button button-primary button-small">Aprobar</button>
+                                </form>
+                                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Rechazar solicitud?');">
+                                    <input type="hidden" name="action" value="lud_rechazar_registro">
+                                    <input type="hidden" name="cuenta_id" value="<?php echo $ns->id; ?>">
+                                    <?php wp_nonce_field('rechazar_socio_'.$ns->id, 'security'); ?>
+                                    <button class="button button-link-delete button-small">Rechazar</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
         <?php endif; ?>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
@@ -315,6 +362,54 @@ class LUD_Admin_Tesoreria {
                     </div>
                 </div>
             </div>
+
+            <?php if ( current_user_can('lud_manage_tesoreria') ): ?>
+        <div class="lud-card" style="margin-top:20px; border-left:5px solid #2980b9;">
+            <h3>🗳️ Gestión de Acciones</h3>
+            <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="background:#f1f1f1; padding:15px; border-radius:5px; display:flex; flex-wrap:wrap; align-items:center; gap:15px;">
+                <input type="hidden" name="action" value="lud_actualizar_acciones">
+                <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
+                <?php wp_nonce_field('lud_update_shares', 'security'); ?>
+                
+                <div>
+                    <label style="font-weight:bold; display:block;">Acciones:</label>
+                    <input type="number" name="nuevas_acciones" value="<?php echo $cuenta->numero_acciones; ?>" min="0" max="100" style="width:80px; text-align:center;">
+                </div>
+                
+                <div style="flex:1;">
+                    <label style="font-weight:bold; display:block;">Motivo del Cambio (Obligatorio):</label>
+                    <input type="text" name="motivo_cambio" placeholder="Ej: Compra inicial, Venta de acciones..." required style="width:100%;">
+                </div>
+                
+                <div style="align-self:flex-end;">
+                    <button class="button button-primary">Actualizar</button>
+                </div>
+            </form>
+        </div>
+        <?php endif; ?>
+        </div>
+
+        <div class="lud-card" style="margin-top:20px; border-left:5px solid #2980b9;">
+            <h3>🗳️ Gestión de Acciones</h3>
+            <p>Modificar el número de acciones de este socio. Esta acción quedará registrada en el historial.</p>
+            
+            <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="background:#f1f1f1; padding:15px; border-radius:5px; display:flex; align-items:center; gap:15px;">
+                <input type="hidden" name="action" value="lud_actualizar_acciones">
+                <input type="hidden" name="user_id" value="<?php echo $user_id; ?>">
+                <?php wp_nonce_field('lud_update_shares', 'security'); ?>
+                
+                <div>
+                    <label style="font-weight:bold;">Acciones Actuales:</label>
+                    <input type="number" name="nuevas_acciones" value="<?php echo $cuenta->numero_acciones; ?>" min="0" max="100" style="width:80px; text-align:center;">
+                </div>
+                
+                <div>
+                    <label style="font-weight:bold;">Motivo del Cambio:</label>
+                    <input type="text" name="motivo_cambio" placeholder="Ej: Compra inicial, Venta de acciones..." required style="width:300px;">
+                </div>
+                
+                <button class="button button-primary">Actualizar Acciones</button>
+            </form>
         </div>
 
         <div class="lud-card" style="margin-top:20px;">
@@ -693,6 +788,108 @@ class LUD_Admin_Tesoreria {
         else { $mes = $mes - 1; }
 
         $this->calcular_utilidad_mes_especifico($mes, $anio);
+    }
+
+    public function procesar_actualizacion_acciones() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        check_admin_referer('lud_update_shares', 'security');
+        
+        global $wpdb;
+        $user_id = intval($_POST['user_id']);
+        $nuevas = intval($_POST['nuevas_acciones']);
+        $motivo = sanitize_text_field($_POST['motivo_cambio']);
+        
+        // 1. Obtener anteriores para el log
+        $anteriores = $wpdb->get_var("SELECT numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+        
+        // 2. Actualizar
+        $wpdb->update(
+            "{$wpdb->prefix}fondo_cuentas",
+            ['numero_acciones' => $nuevas],
+            ['user_id' => $user_id]
+        );
+        
+        // 3. Crear Log en Transacciones (Monto 0, Estado Aprobado)
+        $detalle_log = "ADMIN: Cambio de acciones de $anteriores a $nuevas. Motivo: $motivo";
+        $wpdb->insert(
+            "{$wpdb->prefix}fondo_transacciones",
+            array(
+                'user_id' => $user_id,
+                'tipo' => 'aporte', // Usamos aporte genérico
+                'monto' => 0,
+                'comprobante_url' => '',
+                'estado' => 'aprobado',
+                'detalle' => $detalle_log,
+                'aprobado_por' => get_current_user_id(),
+                'fecha_aprobacion' => current_time('mysql')
+            )
+        );
+        
+        wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=acciones_ok") );
+        exit;
+    }
+
+    // --- LÓGICA DE GESTIÓN DE SOCIOS Y ACCIONES ---
+
+    public function procesar_actualizacion_acciones() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        check_admin_referer('lud_update_shares', 'security');
+        
+        global $wpdb;
+        $user_id = intval($_POST['user_id']);
+        $nuevas = intval($_POST['nuevas_acciones']);
+        $motivo = sanitize_text_field($_POST['motivo_cambio']);
+        
+        $anteriores = $wpdb->get_var("SELECT numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
+        
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['numero_acciones' => $nuevas], ['user_id' => $user_id]);
+        
+        // Log en historial
+        $detalle = "ADMIN: Cambio de acciones ($anteriores -> $nuevas). Motivo: $motivo";
+        $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
+            'user_id' => $user_id, 'tipo' => 'aporte', 'monto' => 0, 'estado' => 'aprobado',
+            'detalle' => $detalle, 'aprobado_por' => get_current_user_id(), 'fecha_registro' => current_time('mysql')
+        ]);
+        
+        wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=acciones_ok") );
+        exit;
+    }
+
+    public function procesar_aprobacion_registro() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        global $wpdb;
+        $cuenta_id = intval($_POST['cuenta_id']);
+        check_admin_referer('aprobar_socio_'.$cuenta_id, 'security');
+
+        // 1. Activar cuenta
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['estado_socio' => 'activo'], ['id' => $cuenta_id]);
+        
+        // 2. Obtener datos para registro inicial
+        $cuenta = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE id = $cuenta_id");
+        
+        // 3. Si hubo aporte inicial, registrarlo como transacción pendiente de validación (o aprobada si se prefiere)
+        // Aquí lo dejamos aprobado asumiendo que el tesorero validó el dinero al aprobar al socio.
+        if ( $cuenta->aporte_inicial > 0 ) {
+            $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
+                'user_id' => $cuenta->user_id, 'tipo' => 'aporte', 'monto' => $cuenta->aporte_inicial,
+                'estado' => 'aprobado', 'detalle' => 'Aporte Inicial por Registro', 
+                'aprobado_por' => get_current_user_id(), 'fecha_registro' => current_time('mysql')
+            ]);
+        }
+
+        wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=socio_aprobado') );
+        exit;
+    }
+
+    public function procesar_rechazo_registro() {
+        if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
+        global $wpdb;
+        $cuenta_id = intval($_POST['cuenta_id']);
+        check_admin_referer('rechazar_socio_'.$cuenta_id, 'security');
+
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['estado_socio' => 'rechazado'], ['id' => $cuenta_id]);
+        wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=socio_rechazado') );
+        exit;
     }
 
 } // FIN DE LA CLASE

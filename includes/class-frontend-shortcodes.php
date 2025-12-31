@@ -8,6 +8,10 @@ class LUD_Frontend_Shortcodes {
         add_shortcode( 'lud_historial', array( $this, 'render_historial_movimientos' ) );
         add_shortcode( 'lud_perfil_datos', array( $this, 'render_perfil_beneficiario' ) ); 
         add_action( 'admin_post_lud_guardar_perfil', array( $this, 'procesar_guardado_perfil' ) );
+        // --- NUEVOS SHORTCODES ---
+        add_shortcode( 'lud_registro_socio', array( $this, 'render_formulario_registro' ) );
+        add_action( 'admin_post_nopriv_lud_procesar_registro', array( $this, 'procesar_registro_nuevo' ) );
+        add_action( 'admin_post_lud_procesar_registro', array( $this, 'procesar_registro_nuevo' ) );
     }
 
     // --- CARD 1: RESUMEN ---
@@ -272,6 +276,175 @@ class LUD_Frontend_Shortcodes {
         }
 
         wp_redirect( add_query_arg( 'lud_profile_saved', '1', wp_get_referer() ) );
+        exit;
+    }
+
+    // --- FORMULARIO DE REGISTRO NUEVO SOCIO ---
+    public function render_formulario_registro() {
+        if ( is_user_logged_in() ) return '<div class="lud-alert success">Ya tienes una sesión activa. No necesitas registrarte de nuevo.</div>';
+        
+        $msg = '';
+        if ( isset($_GET['lud_reg']) && $_GET['lud_reg'] == 'ok' ) {
+            return '<div class="lud-card" style="text-align:center;">
+                <h3>✅ ¡Solicitud Recibida!</h3>
+                <p>Tus datos han sido enviados a la Junta Directiva.</p>
+                <p>Nos pondremos en contacto contigo una vez tu ingreso sea aprobado.</p>
+            </div>';
+        }
+        if ( isset($_GET['lud_err']) ) $msg = '<div class="lud-alert error">❌ '.sanitize_text_field($_GET['lud_err']).'</div>';
+
+        ob_start();
+        ?>
+        <div class="lud-card">
+            <div class="lud-header"><h3>📝 Solicitud de Ingreso</h3></div>
+            <?php echo $msg; ?>
+            <p>Diligencia este formulario para solicitar tu vinculación al Fondo de Inversión.</p>
+            
+            <form action="<?php echo esc_url( admin_url('admin-post.php') ); ?>" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="lud_procesar_registro">
+                <?php wp_nonce_field( 'lud_registro_nonce', 'lud_security' ); ?>
+
+                <h4 style="border-bottom:1px solid #eee; margin-top:20px;">1. Datos Personales</h4>
+                <div class="lud-form-group">
+                    <label class="lud-label">Nombre Completo</label>
+                    <input type="text" name="nombre_completo" class="lud-input" required>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 2fr; gap:10px;">
+                    <div class="lud-form-group">
+                        <label class="lud-label">Tipo Doc.</label>
+                        <select name="tipo_documento" class="lud-input" required>
+                            <option value="CC">C.C.</option>
+                            <option value="CE">C.E.</option>
+                            <option value="Pasaporte">Pasaporte</option>
+                        </select>
+                    </div>
+                    <div class="lud-form-group">
+                        <label class="lud-label">Número Documento</label>
+                        <input type="text" name="numero_documento" class="lud-input" required>
+                    </div>
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Fecha de Nacimiento</label>
+                    <input type="date" name="fecha_nacimiento" class="lud-input" required>
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Dirección de Residencia</label>
+                    <input type="text" name="direccion" class="lud-input" required>
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Ciudad y País</label>
+                    <input type="text" name="ciudad_pais" class="lud-input" placeholder="Ej: Bogotá, Colombia" required>
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Teléfono de Contacto</label>
+                    <input type="text" name="telefono" class="lud-input" required>
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Correo Electrónico (Será tu usuario)</label>
+                    <input type="email" name="email" class="lud-input" required>
+                </div>
+
+                <h4 style="border-bottom:1px solid #eee; margin-top:20px;">2. Información del Fondo</h4>
+                <div class="lud-form-group">
+                    <label class="lud-label">Fecha estimada de ingreso (Si aplica)</label>
+                    <input type="date" name="fecha_ingreso" class="lud-input">
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Monto Aporte Inicial ($)</label>
+                    <input type="number" name="aporte_inicial" class="lud-input" placeholder="0" min="0">
+                </div>
+
+                <h4 style="border-bottom:1px solid #eee; margin-top:20px;">3. Información Financiera</h4>
+                <div class="lud-form-group">
+                    <label class="lud-label">Actividad Económica</label>
+                    <input type="text" name="actividad_economica" class="lud-input" placeholder="Ej: Empleado, Comerciante..." required>
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Fuente de Ingresos</label>
+                    <input type="text" name="origen_fondos" class="lud-input" placeholder="Ej: Salario, Ventas..." required>
+                </div>
+                <div class="lud-form-group">
+                    <label class="lud-label">Banco / Medio de Pago Habitual</label>
+                    <input type="text" name="banco" class="lud-input" placeholder="Ej: Bancolombia, Nequi..." required>
+                </div>
+
+                <h4 style="border-bottom:1px solid #eee; margin-top:20px;">4. Documentos</h4>
+                <div class="lud-form-group">
+                    <label class="lud-label">Copia Documento Identidad (PDF < 2MB)</label>
+                    <input type="file" name="archivo_documento" class="lud-input" accept="application/pdf" required>
+                </div>
+
+                <button type="submit" class="lud-btn">Enviar Solicitud</button>
+            </form>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    public function procesar_registro_nuevo() {
+        if ( ! isset( $_POST['lud_security'] ) || ! wp_verify_nonce( $_POST['lud_security'], 'lud_registro_nonce' ) ) wp_die('Seguridad');
+
+        $email = sanitize_email($_POST['email']);
+        $documento = sanitize_text_field($_POST['numero_documento']);
+        
+        if ( username_exists($documento) || email_exists($email) ) {
+            wp_redirect(add_query_arg('lud_err', 'El usuario o correo ya existe', wp_get_referer())); exit;
+        }
+
+        // 1. Subir PDF
+        $pdf_filename = '';
+        if ( isset($_FILES['archivo_documento']) && !empty($_FILES['archivo_documento']['name']) ) {
+            $file = $_FILES['archivo_documento'];
+            if ( $file['type'] != 'application/pdf' ) wp_die('Solo se permiten archivos PDF');
+            
+            $upload_dir = wp_upload_dir();
+            $target_dir = $upload_dir['basedir'] . '/fondo_seguro/documentos/';
+            if ( ! file_exists( $target_dir ) ) mkdir( $target_dir, 0755, true );
+            
+            $pdf_filename = 'doc_' . $documento . '_' . time() . '.pdf';
+            move_uploaded_file( $file['tmp_name'], $target_dir . $pdf_filename );
+        }
+
+        // 2. Crear Usuario WordPress (Login = Cédula, Pass = Cédula temporalmente)
+        $user_id = wp_create_user( $documento, $documento, $email );
+        if ( is_wp_error($user_id) ) wp_die($user_id->get_error_message());
+
+        wp_update_user([
+            'ID' => $user_id, 
+            'display_name' => sanitize_text_field($_POST['nombre_completo']),
+            'role' => 'lud_socio'
+        ]);
+
+        // 3. Crear Ficha en DB
+        global $wpdb;
+        $wpdb->insert("{$wpdb->prefix}fondo_cuentas", [
+            'user_id' => $user_id,
+            'numero_acciones' => 0,
+            'estado_socio' => 'pendiente', // IMPORTANTE: Entra como pendiente
+            
+            // Datos Personales
+            'tipo_documento' => sanitize_text_field($_POST['tipo_documento']),
+            'numero_documento' => $documento,
+            'fecha_nacimiento' => sanitize_text_field($_POST['fecha_nacimiento']),
+            'direccion_residencia' => sanitize_text_field($_POST['direccion']),
+            'ciudad_pais' => sanitize_text_field($_POST['ciudad_pais']),
+            'telefono_contacto' => sanitize_text_field($_POST['telefono']),
+            'email_contacto' => $email,
+            
+            // Datos Fondo
+            'fecha_ingreso_fondo' => sanitize_text_field($_POST['fecha_ingreso']),
+            'aporte_inicial' => floatval($_POST['aporte_inicial']),
+            
+            // Datos Financieros
+            'actividad_economica' => sanitize_text_field($_POST['actividad_economica']),
+            'origen_fondos' => sanitize_text_field($_POST['origen_fondos']),
+            'banco_medio_pago' => sanitize_text_field($_POST['banco']),
+            
+            // Docs
+            'url_documento_id' => $pdf_filename
+        ]);
+
+        wp_redirect( add_query_arg( 'lud_reg', 'ok', wp_get_referer() ) );
         exit;
     }
 }
