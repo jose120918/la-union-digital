@@ -82,4 +82,5 @@ add_action( 'wp_enqueue_scripts', 'lud_enqueue_assets' ); // Frontend
 function lud_admin_enqueue_assets() {
     wp_enqueue_style( 'lud-admin-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.2.0' );
 }
+
 add_action( 'admin_enqueue_scripts', 'lud_admin_enqueue_assets' );

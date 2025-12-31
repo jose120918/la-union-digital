@@ -104,7 +104,7 @@ class LUD_DB_Installer {
             capital_programado DECIMAL(15,2) NOT NULL,
             interes_programado DECIMAL(15,2) NOT NULL,
             valor_cuota_total DECIMAL(15,2) NOT NULL,
-            fecha_pago REAL DATE NULL,
+            fecha_pago DATE NULL,
             monto_pagado DECIMAL(15,2) DEFAULT 0,
             estado ENUM('pendiente', 'pagado', 'parcial', 'mora') DEFAULT 'pendiente',
             KEY credito_id (credito_id)
