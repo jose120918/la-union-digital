@@ -180,6 +180,7 @@ class LUD_Admin_Tesoreria {
         $faltante_meta = $meta_aporte_ideal - floatval($recaudo_real_aporte);
         // Si ya superamos la meta (ej. pagos adelantados), mostramos 0, sino el negativo.
         $indicador_meta = ($faltante_meta > 0) ? ($faltante_meta * -1) : 0; 
+        $porcentaje_cumplimiento = ($meta_aporte_ideal > 0) ? round(($recaudo_real_aporte / $meta_aporte_ideal) * 100, 1) : 0;
 
         // 5. Radar de Morosos (Lógica combinada: Aportes viejos OR Créditos en Mora)
         $fecha_corte_mora = date('Y-m-01', strtotime('-1 month')); // Si su ultimo aporte es anterior al mes pasado
@@ -192,6 +193,21 @@ class LUD_Admin_Tesoreria {
                OR (cr.id IS NOT NULL)
             GROUP BY c.user_id
         ");
+
+        // 6. Métricas de cartera y operación para Presidencia/Secretaría
+        // Nota: Separamos las métricas para mostrar claridad en el tablero.
+        $cartera_vigente = floatval( $wpdb->get_var("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo','mora')") );
+        $cartera_mora = floatval( $wpdb->get_var("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado = 'mora'") );
+        $porcentaje_mora = ($cartera_vigente > 0) ? round( ($cartera_mora / $cartera_vigente) * 100, 1 ) : 0;
+
+        $recaudo_mes_total = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual") );
+        $gasto_mes_total = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE MONTH(fecha_gasto) = $mes_actual AND YEAR(fecha_gasto) = $anio_actual") );
+
+        $creditos_pendientes_monto = floatval( $wpdb->get_var("SELECT SUM(monto_solicitado) FROM {$wpdb->prefix}fondo_creditos WHERE estado = 'pendiente_tesoreria'") );
+        $creditos_pendientes_total = intval( $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_creditos WHERE estado = 'pendiente_tesoreria'") );
+
+        $socios_activos = intval( $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'") );
+        $socios_morosos = count($morosos);
 
         // 2. CONSULTAS PENDIENTES
         $pendientes = $wpdb->get_results( 
@@ -261,6 +277,50 @@ class LUD_Admin_Tesoreria {
                 <?php elseif($pendiente_entrega_sec <= 0): ?>
                     <small style="color:#27ae60;">✅ Al día (Entregado)</small>
                 <?php endif; ?>
+            </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px; margin-bottom:30px;">
+            <div class="lud-card" style="border-left: 4px solid #6c5ce7;">
+                <h4 style="margin:0; color:#7f8c8d;">💼 Cartera Vigente</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#6c5ce7;">$ <?php echo number_format($cartera_vigente, 0, ',', '.'); ?></div>
+                <small>Saldo total de créditos activos y en seguimiento.</small>
+            </div>
+
+            <div class="lud-card" style="border-left: 4px solid #d63031;">
+                <h4 style="margin:0; color:#7f8c8d;">🚨 Cartera en Mora</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#d63031;">$ <?php echo number_format($cartera_mora, 0, ',', '.'); ?></div>
+                <small><?php echo $porcentaje_mora; ?>% de la cartera vigente.</small>
+            </div>
+
+            <div class="lud-card" style="border-left: 4px solid #16a085;">
+                <h4 style="margin:0; color:#7f8c8d;">📊 Recaudo del Mes</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#16a085;">$ <?php echo number_format($recaudo_mes_total, 0, ',', '.'); ?></div>
+                <small>Incluye ahorro, créditos y multas.</small>
+            </div>
+
+            <div class="lud-card" style="border-left: 4px solid #e67e22;">
+                <h4 style="margin:0; color:#7f8c8d;">💸 Gasto Operativo del Mes</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#e67e22;">$ <?php echo number_format($gasto_mes_total, 0, ',', '.'); ?></div>
+                <small>Pagos ya egresados del fondo.</small>
+            </div>
+
+            <div class="lud-card" style="border-left: 4px solid #009688;">
+                <h4 style="margin:0; color:#7f8c8d;">🎯 Cumplimiento Aportes</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#009688;"><?php echo $porcentaje_cumplimiento; ?>%</div>
+                <small><?php echo ($porcentaje_cumplimiento >= 100) ? 'Meta alcanzada' : 'Seguimos recolectando.'; ?></small>
+            </div>
+
+            <div class="lud-card" style="border-left: 4px solid #27ae60;">
+                <h4 style="margin:0; color:#7f8c8d;">🧮 Créditos en Cola</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#27ae60;"><?php echo $creditos_pendientes_total; ?> solicitudes</div>
+                <small>Por desembolsar: $ <?php echo number_format($creditos_pendientes_monto, 0, ',', '.'); ?></small>
+            </div>
+
+            <div class="lud-card" style="border-left: 4px solid #2d3436;">
+                <h4 style="margin:0; color:#7f8c8d;">👥 Socios Activos</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#2d3436;"><?php echo $socios_activos; ?></div>
+                <small><?php echo $socios_morosos; ?> con alerta en cartera.</small>
             </div>
         </div>
 

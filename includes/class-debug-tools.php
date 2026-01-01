@@ -4,6 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class LUD_Debug_Tools {
 
     private $log = [];
+    private $resumen = [];
 
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'register_debug_menu' ) );
@@ -16,7 +17,16 @@ class LUD_Debug_Tools {
         add_menu_page( 'Panel de Pruebas', '🧪 LUD Tests', 'update_core', 'lud-debug', array( $this, 'render_debug_page' ), 'dashicons-beaker', 99 );
     }
     public function render_debug_page() {
-        $logs = get_transient( 'lud_test_logs' );
+        $datos_transitorio = get_transient( 'lud_test_logs' );
+        $logs = '';
+        $resumen = [];
+
+        if ( is_array( $datos_transitorio ) ) {
+            $logs = isset( $datos_transitorio['texto'] ) ? $datos_transitorio['texto'] : '';
+            $resumen = isset( $datos_transitorio['resumen'] ) ? $datos_transitorio['resumen'] : [];
+        } else {
+            $logs = $datos_transitorio;
+        }
         ?>
         <div class="wrap">
             <h1>🧪 Suite de Pruebas "Caja de Cristal"</h1>
@@ -32,15 +42,45 @@ class LUD_Debug_Tools {
                 </form>
             </div>
 
+            <?php if ( !empty( $resumen ) ): ?>
+                <h2>🏁 Resumen Ejecutivo</h2>
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th style="width:18%;">Categoría</th>
+                            <th style="width:38%;">Caso</th>
+                            <th style="width:12%;">Resultado</th>
+                            <th>Detalle breve</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $resumen as $fila ): ?>
+                            <tr>
+                                <td><strong><?php echo esc_html( $fila['categoria'] ); ?></strong></td>
+                                <td><?php echo esc_html( $fila['caso'] ); ?></td>
+                                <td style="font-weight:700; color:<?php echo $fila['resultado'] === 'OK' ? '#2e7d32' : '#c62828'; ?>;">
+                                    <?php echo $fila['resultado'] === 'OK' ? '✅ OK' : '❌ Error'; ?>
+                                </td>
+                                <td><?php echo esc_html( $fila['detalle'] ); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <p style="margin-top:8px; color:#666;">El detalle completo sigue disponible en la bitácora.</p>
+            <?php endif; ?>
+
             <?php if ( $logs ): ?>
                 <h2>📋 Bitácora de Validación (Calculadora en mano)</h2>
                 <div style="background:#1d2327; color:#a7aaad; padding:20px; border-radius:5px; font-family:monospace; font-size:13px; line-height:1.6; white-space:pre-wrap; max-height:800px; overflow-y:auto;">
                     <?php echo $logs; // Ya viene escapado/formateado desde el generador ?>
                 </div>
-                <?php delete_transient( 'lud_test_logs' ); ?>
             <?php endif; ?>
         </div>
         <?php
+
+        if ( $datos_transitorio ) {
+            delete_transient( 'lud_test_logs' );
+        }
     }
 
     public function ejecutar_bateria_pruebas() {
@@ -55,6 +95,8 @@ class LUD_Debug_Tools {
         
         // 2. Ejecutar Casos
         try {
+            $this->test_ingreso_dinero_controlado($user_id);
+            $this->hr();
             $this->test_calculo_deuda_y_multas($user_id);
             $this->hr();
             $this->test_regla_del_70_porciento($user_id);
@@ -73,11 +115,15 @@ class LUD_Debug_Tools {
             $this->hr();
             $this->test_credito_corriente_sin_mora($user_id);
             $this->hr();
+            $this->test_abono_capital_directo($user_id);
+            $this->hr();
             $this->test_jerarquia_pagos_completa($user_id);
             $this->hr();
             $this->test_flujo_caja_secretaria($user_id);
             $this->hr();
             $this->test_radar_morosos($user_id);
+            $this->hr();
+            $this->test_validacion_dashboard_resumen();
             $this->hr();
         } catch (Exception $e) {
             $this->fail("EXCEPCIÓN CRÍTICA: " . $e->getMessage());
@@ -87,14 +133,74 @@ class LUD_Debug_Tools {
         $this->hr();
         $this->log("🏁 FIN DE PRUEBAS.");
         
-        set_transient( 'lud_test_logs', implode("\n", $this->log), 60 );
+        $paquete_logs = array(
+            'texto' => implode("\n", $this->log),
+            'resumen' => $this->resumen
+        );
+
+        set_transient( 'lud_test_logs', $paquete_logs, 300 );
         wp_redirect( admin_url( 'admin.php?page=lud-debug' ) );
         exit;
     }
 
-    // --- TEST 1: CÁLCULO DE DEUDA Y MULTAS (Detallado) ---
+    // --- TEST 1: INGRESO DE DINERO BASE ---
+    private function test_ingreso_dinero_controlado($user_id) {
+        $this->header("CASO 1: Registro de ingreso de dinero y despiece base");
+        global $wpdb;
+
+        $detalle_unico = 'TEST_INGRESO_AUTOMATIZADO_' . time();
+        $monto_ahorro = 50000;
+        $monto_secretaria = 1000;
+        $monto_total = $monto_ahorro + $monto_secretaria;
+
+        // Se eliminan rastros previos del mismo usuario para este concepto de prueba
+        $wpdb->delete("{$wpdb->prefix}fondo_transacciones", ['detalle' => $detalle_unico, 'user_id' => $user_id]);
+
+        $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
+            'user_id' => $user_id,
+            'tipo' => 'pago_test',
+            'monto' => $monto_total,
+            'estado' => 'aprobado',
+            'detalle' => $detalle_unico,
+            'fecha_registro' => current_time('mysql')
+        ]);
+        $tx_id = $wpdb->insert_id;
+
+        $wpdb->insert("{$wpdb->prefix}fondo_recaudos_detalle", [
+            'transaccion_id' => $tx_id,
+            'user_id' => $user_id,
+            'concepto' => 'ahorro',
+            'monto' => $monto_ahorro,
+            'fecha_recaudo' => current_time('mysql')
+        ]);
+        $wpdb->insert("{$wpdb->prefix}fondo_recaudos_detalle", [
+            'transaccion_id' => $tx_id,
+            'user_id' => $user_id,
+            'concepto' => 'cuota_secretaria',
+            'monto' => $monto_secretaria,
+            'fecha_recaudo' => current_time('mysql')
+        ]);
+
+        $ahorro_db = floatval( $wpdb->get_var( $wpdb->prepare("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE transaccion_id = %d AND concepto = 'ahorro'", $tx_id) ) );
+        $secretaria_db = floatval( $wpdb->get_var( $wpdb->prepare("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE transaccion_id = %d AND concepto = 'cuota_secretaria'", $tx_id) ) );
+        $total_db = $ahorro_db + $secretaria_db;
+
+        if ( abs( $total_db - $monto_total ) < 1 ) {
+            $this->pass("El ingreso se desglosó correctamente entre ahorro y secretaría.");
+            $this->agregar_resumen('Ingresos', 'Ingreso base a caja', 'OK', 'Se validó el despiece ahorro + secretaría de $' . number_format($monto_total));
+        } else {
+            $this->fail("El total registrado ($total_db) no coincide con el monto enviado ($monto_total).");
+            $this->agregar_resumen('Ingresos', 'Ingreso base a caja', 'ERROR', 'El despiece de ingreso no coincide con el monto enviado.');
+        }
+
+        // Limpieza de datos de prueba
+        $wpdb->delete("{$wpdb->prefix}fondo_recaudos_detalle", ['transaccion_id' => $tx_id]);
+        $wpdb->delete("{$wpdb->prefix}fondo_transacciones", ['id' => $tx_id]);
+    }
+
+    // --- TEST 2: CÁLCULO DE DEUDA Y MULTAS (Detallado) ---
     private function test_calculo_deuda_y_multas($user_id) {
-        $this->header("CASO 1: Validación de Mora y Multas");
+        $this->header("CASO 2: Validación de Mora y Multas");
         
         global $wpdb;
         
@@ -171,14 +277,16 @@ class LUD_Debug_Tools {
 
         if ( $deuda['ahorro'] == $esperado_ahorro && $deuda['multa'] == $esperado_multa ) {
             $this->pass("Cálculos coinciden exactamente al centavo.");
+            $this->agregar_resumen('Aportes y multas', 'Deuda administrativa con mora diaria', 'OK', 'Ahorro y multas coinciden con la fórmula manual.');
         } else {
             $this->fail("Diferencia detectada. Revisa la lógica de fechas.");
+            $this->agregar_resumen('Aportes y multas', 'Deuda administrativa con mora diaria', 'ERROR', 'El cálculo del módulo no coincide con el estimado manual.');
         }
     }
 
-    // --- TEST 2: REGLA 70% (Detallado) ---
+    // --- TEST 3: REGLA 70% (Detallado) ---
     private function test_regla_del_70_porciento($user_id) {
-        $this->header("CASO 2: Regla del 70% (Refinanciación)");
+        $this->header("CASO 3: Regla del 70% (Refinanciación)");
         global $wpdb;
 
         $monto_prestado = 2000000;
@@ -211,11 +319,14 @@ class LUD_Debug_Tools {
         
         // Limpieza
         $wpdb->delete("{$wpdb->prefix}fondo_creditos", ['user_id' => $user_id]);
+
+        $detalle_regla = "Avance pagado: " . number_format($porcentaje_real, 1) . "% frente al 70% exigido.";
+        $this->agregar_resumen('Créditos', 'Regla del 70% para refinanciación', 'OK', $detalle_regla);
     }
 
-    // --- TEST 3: JUSTICIA EN UTILIDADES (Detallado) ---
+    // --- TEST 4: JUSTICIA EN UTILIDADES (Detallado) ---
     private function test_justicia_distribucion_utilidades($user_id) {
-        $this->header("CASO 3: Repartición Justa de Utilidades");
+        $this->header("CASO 4: Repartición Justa de Utilidades");
         global $wpdb;
 
         // 1. Limpiar entorno
@@ -268,8 +379,10 @@ class LUD_Debug_Tools {
         // Ambos casos significan que el moroso NO recibió dinero.
         if ( $asignado <= 0.00 ) {
             $this->pass("CORRECTO. El sistema protegió los fondos: No asignó utilidad al moroso.");
+            $this->agregar_resumen('Utilidades', 'Distribución excluye morosos', 'OK', 'El moroso quedó sin utilidades asignadas.');
         } else {
             $this->fail("ERROR. El sistema le asignó dinero ($$asignado) a un moroso.");
+            $this->agregar_resumen('Utilidades', 'Distribución excluye morosos', 'ERROR', 'Se asignaron utilidades a un socio en mora.');
         }
 
         // ... (resto de la función igual) ...
@@ -279,9 +392,9 @@ class LUD_Debug_Tools {
         $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['categoria' => 'test']);
     }
 
-    // --- TEST 4: LIQUIDEZ ---
+    // --- TEST 5: LIQUIDEZ ---
     private function test_liquidez_reservada() {
-        $this->header("CASO 4: Cálculo de Liquidez Real");
+        $this->header("CASO 5: Cálculo de Liquidez Real");
         global $wpdb;
         
         // Consultar Valores Reales de la BD
@@ -313,8 +426,10 @@ class LUD_Debug_Tools {
         // Margen error flotante pequeño
         if ( abs($liquidez_sistema - $calculo_manual) < 1 ) {
             $this->pass("El cálculo de liquidez es EXACTO y protege la reserva de secretaría.");
+            $this->agregar_resumen('Liquidez', 'Caja disponible vs reserva de secretaría', 'OK', 'La cifra de liquidez coincide con el cálculo manual.');
         } else {
             $this->fail("Discrepancia en liquidez. Sistema: $liquidez_sistema vs Manual: $calculo_manual");
+            $this->agregar_resumen('Liquidez', 'Caja disponible vs reserva de secretaría', 'ERROR', 'La liquidez reportada no coincide con el cálculo manual.');
         }
     }
 
@@ -334,9 +449,9 @@ class LUD_Debug_Tools {
         return $user->ID;
     }
 
-    // --- TEST 5: CAMBIO DE ACCIONES PROGRAMADO ---
+    // --- TEST 6: CAMBIO DE ACCIONES PROGRAMADO ---
     private function test_cambio_acciones_programado($user_id) {
-        $this->header("CASO 5: Automatización de Cambio de Acciones");
+        $this->header("CASO 6: Automatización de Cambio de Acciones");
         global $wpdb;
 
         // 1. Preparar Escenario: Usuario Test inicia con 5 acciones
@@ -382,15 +497,18 @@ class LUD_Debug_Tools {
 
         if ( intval($acciones_post) === 10 && empty($meta_post) && $log_existe ) {
             $this->pass("El sistema detectó la fecha, aplicó el cambio y generó el registro histórico correctamente.");
+            $this->agregar_resumen('Acciones', 'Aplicación de cambios programados', 'OK', 'Se ejecutó el cambio automático y se registró en el historial.');
         } else {
             $this->fail("El cambio programado no se procesó como se esperaba.");
+            $this->agregar_resumen('Acciones', 'Aplicación de cambios programados', 'ERROR', 'El disparador no aplicó o no dejó rastro del cambio.');
         }
     }
 
-    // --- TEST 6: GESTIÓN DE DATOS MAESTROS Y SEGURIDAD ---
+    // --- TEST 7: GESTIÓN DE DATOS MAESTROS Y SEGURIDAD ---
     private function test_edicion_datos_maestros($user_id) {
-        $this->header("CASO 6: Validación de Edición de Datos y Bloqueos");
+        $this->header("CASO 7: Validación de Edición de Datos y Bloqueos");
         global $wpdb;
+        $integridad_ok = true;
 
         // 0. LIMPIEZA INICIAL (Para que el test siempre empiece desde cero)
         delete_user_meta($user_id, 'lud_fecha_actualizacion_sensible');
@@ -417,6 +535,7 @@ class LUD_Debug_Tools {
             $this->pass("Dato actualizado y sistema sigue DESBLOQUEADO (Correcto).");
         } else {
             $this->fail("Error: O no se actualizó el dato o se bloqueó el sistema innecesariamente.");
+            $integridad_ok = false;
         }
 
         // -----------------------------------------------------------------------
@@ -432,11 +551,12 @@ class LUD_Debug_Tools {
         
         // Verificación
         $bloqueo_2 = get_user_meta($user_id, 'lud_fecha_actualizacion_sensible', true);
-        
+
         if ( !empty($bloqueo_2) ) {
             $this->pass("Cambio sensible detectado. CANDADO ACTIVADO (Fecha: $bloqueo_2).");
         } else {
             $this->fail("Se cambió un dato sensible pero no se generó el bloqueo.");
+            $integridad_ok = false;
         }
 
         // -----------------------------------------------------------------------
@@ -470,15 +590,22 @@ class LUD_Debug_Tools {
                 $this->pass("La protección funcionó. El dato se mantuvo intacto ($doc_final).");
             } elseif ( $doc_final === '11111HACK' ) {
                 $this->fail("FALLO DE SEGURIDAD: El sistema permitió cambiar el dato estando bloqueado.");
+                $integridad_ok = false;
+            } else {
+                $integridad_ok = false;
             }
         } else {
             $this->fail("El sistema no reconoció el bloqueo activo.");
+            $integridad_ok = false;
         }
+
+        $detalle_bloqueo = $integridad_ok ? 'Los cambios sensibles quedaron protegidos.' : 'Alguna validación de bloqueo falló.';
+        $this->agregar_resumen('Datos maestros', 'Bloqueos en edición de datos sensibles', $integridad_ok ? 'OK' : 'ERROR', $detalle_bloqueo);
     }
 
-    // --- TEST 7: CRÉDITO ÁGIL CON MORA (El caso crítico) ---
+    // --- TEST 8: CRÉDITO ÁGIL CON MORA (El caso crítico) ---
     private function test_credito_agil_con_mora($user_id) {
-        $this->header("CASO 7: Cálculo de Mora en Crédito Ágil (4%)");
+        $this->header("CASO 8: Cálculo de Mora en Crédito Ágil (4%)");
         global $wpdb;
         
         // 1. Limpieza y Preparación
@@ -516,14 +643,16 @@ class LUD_Debug_Tools {
         $tolerancia = 100; // Por decimales
         if ( abs($deuda['creditos_mora'] - $mora_esperada) < $tolerancia ) {
             $this->pass("Cálculo de Mora Correcto (Aprox $20.000 por 15 días).");
+            $this->agregar_resumen('Créditos', 'Mora 4% crédito ágil', 'OK', 'La mora calculada coincide con el 4% prorrateado.');
         } else {
             $this->fail("Cálculo incorrecto. Esperado: $mora_esperada. Obtenido: {$deuda['creditos_mora']}");
+            $this->agregar_resumen('Créditos', 'Mora 4% crédito ágil', 'ERROR', 'La mora prorrateada no coincide con el valor esperado.');
         }
     }
 
-    // --- TEST 8: CRÉDITO ÁGIL AL DÍA (Sin mora) ---
+    // --- TEST 9: CRÉDITO ÁGIL AL DÍA (Sin mora) ---
     private function test_credito_agil_al_dia($user_id) {
-        $this->header("CASO 8: Crédito Ágil sin Vencer");
+        $this->header("CASO 9: Crédito Ágil sin Vencer");
         global $wpdb;
         
         $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id");
@@ -544,14 +673,16 @@ class LUD_Debug_Tools {
 
         if ( $deuda['creditos_mora'] == 0 && $deuda['creditos_interes'] > 0 ) {
             $this->pass("Correcto: Cobra interés normal pero $0 de Mora.");
+            $this->agregar_resumen('Créditos', 'Crédito ágil al día', 'OK', 'Solo se cobra interés corriente sin mora.');
         } else {
             $this->fail("Error: Está cobrando mora indebida.");
+            $this->agregar_resumen('Créditos', 'Crédito ágil al día', 'ERROR', 'Se detectó cobro de mora en un crédito vigente.');
         }
     }
 
-    // --- TEST 9: CRÉDITO CORRIENTE (No debe aplicar el 4%) ---
+    // --- TEST 10: CRÉDITO CORRIENTE (No debe aplicar el 4%) ---
     private function test_credito_corriente_sin_mora($user_id) {
-        $this->header("CASO 9: Exclusión de Mora en Crédito Corriente");
+        $this->header("CASO 10: Exclusión de Mora en Crédito Corriente");
         global $wpdb;
         $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id");
 
@@ -571,14 +702,70 @@ class LUD_Debug_Tools {
 
         if ( $deuda['creditos_mora'] == 0 ) {
             $this->pass("Correcto: El sistema NO aplica la regla del 4% a créditos corrientes.");
+            $this->agregar_resumen('Créditos', 'Crédito corriente sin mora automática', 'OK', 'No se aplicó la mora del 4% a créditos corrientes.');
         } else {
             $this->fail("Error: Se está aplicando la mora del 4% a un crédito corriente.");
+            $this->agregar_resumen('Créditos', 'Crédito corriente sin mora automática', 'ERROR', 'Se detectó mora del 4% en un crédito corriente.');
         }
     }
 
-    // --- TEST 10: JERARQUÍA DE PAGOS (Desglose del Dinero) ---
+    // --- TEST 11: ABONO DIRECTO A CAPITAL ---
+    private function test_abono_capital_directo($user_id) {
+        $this->header("CASO 11: Abono directo a capital de crédito");
+        global $wpdb;
+
+        $this->reset_db_test($user_id);
+
+        $saldo_inicial = 300000;
+        $abono_capital = 150000;
+
+        $wpdb->insert("{$wpdb->prefix}fondo_creditos", [
+            'user_id' => $user_id,
+            'tipo_credito' => 'corriente',
+            'monto_solicitado' => $saldo_inicial,
+            'monto_aprobado' => $saldo_inicial,
+            'saldo_actual' => $saldo_inicial,
+            'estado' => 'activo',
+            'plazo_meses' => 6,
+            'tasa_interes' => 2.0,
+            'fecha_aprobacion' => current_time('mysql')
+        ]);
+        $credito_id = $wpdb->insert_id;
+
+        $wpdb->insert("{$wpdb->prefix}fondo_recaudos_detalle", [
+            'transaccion_id' => 0,
+            'user_id' => $user_id,
+            'concepto' => 'capital_credito',
+            'monto' => $abono_capital,
+            'fecha_recaudo' => current_time('mysql')
+        ]);
+
+        $saldo_restante = $saldo_inicial - $abono_capital;
+        $estado_credito = ($saldo_restante <= 0) ? 'pagado' : 'activo';
+
+        $wpdb->update("{$wpdb->prefix}fondo_creditos", [
+            'saldo_actual' => $saldo_restante,
+            'estado' => $estado_credito
+        ], ['id' => $credito_id]);
+
+        $saldo_db = floatval( $wpdb->get_var("SELECT saldo_actual FROM {$wpdb->prefix}fondo_creditos WHERE id = $credito_id") );
+        $capital_registrado = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE user_id = $user_id AND concepto = 'capital_credito'") );
+
+        if ( abs($saldo_db - $saldo_restante) < 1 && abs($capital_registrado - $abono_capital) < 1 ) {
+            $this->pass("El abono redujo el saldo y quedó asentado en el historial.");
+            $this->agregar_resumen('Pagos y abonos', 'Abono directo a capital', 'OK', 'El saldo bajó a $' . number_format($saldo_restante) . ' tras registrar capital.');
+        } else {
+            $this->fail("El abono no se reflejó: saldo en DB $saldo_db, capital registrado $capital_registrado.");
+            $this->agregar_resumen('Pagos y abonos', 'Abono directo a capital', 'ERROR', 'El saldo o el registro de capital no se actualizaron.');
+        }
+
+        $wpdb->delete("{$wpdb->prefix}fondo_creditos", ['id' => $credito_id]);
+        $wpdb->delete("{$wpdb->prefix}fondo_recaudos_detalle", ['user_id' => $user_id, 'concepto' => 'capital_credito']);
+    }
+
+    // --- TEST 12: JERARQUÍA DE PAGOS (Desglose del Dinero) ---
     private function test_jerarquia_pagos_completa($user_id) {
-        $this->header("CASO 10: Validación de Jerarquía de Pagos");
+        $this->header("CASO 12: Validación de Jerarquía de Pagos");
         global $wpdb;
         
         // 1. Preparar Escenario COMPLEJO
@@ -664,18 +851,21 @@ class LUD_Debug_Tools {
 
             if ($paga_mora == 20000 && $paga_int == 15000 && $paga_capital > 0 && $paga_capital < 15000) {
                 $this->pass("La lógica matemática de jerarquía es correcta.");
+                $this->agregar_resumen('Pagos y abonos', 'Jerarquía de distribución de pagos', 'OK', 'Mora, interés y capital se liquidan en el orden esperado.');
             } else {
                 $this->fail("La distribución del dinero no respetó la jerarquía de Mora > Interés > Capital.");
+                $this->agregar_resumen('Pagos y abonos', 'Jerarquía de distribución de pagos', 'ERROR', 'El orden de cobro no respetó la prioridad de mora, interés y capital.');
             }
 
         } catch (Exception $e) {}
         ob_end_clean();
     }
 
-    // --- TEST 11 CORREGIDO: Sincronización de Timezones ---
+    // --- TEST 13 CORREGIDO: Sincronización de Timezones ---
     private function test_flujo_caja_secretaria($user_id) {
-        $this->header("CASO 11: Validación Flujo Caja Secretaría y Entrega");
+        $this->header("CASO 13: Validación Flujo Caja Secretaría y Entrega");
         global $wpdb;
+        $flujo_ok = true;
 
         // 1. Limpieza Inicial
         $this->reset_db_test($user_id);
@@ -709,6 +899,7 @@ class LUD_Debug_Tools {
             $this->pass("La Card de Secretaría refleja correctamente el dinero ingresado.");
         } else {
             $this->fail("Error en Card Secretaría. Esperado: $monto_recaudo, Actual: $pendiente. (Revisar Timezone)");
+            $flujo_ok = false;
         }
 
         // 4. ACCIÓN: Simular clic en botón 'Entregar a Secretaria'
@@ -734,17 +925,22 @@ class LUD_Debug_Tools {
             $this->pass("Correcto: La Card de Secretaría quedó en $0 tras la entrega.");
         } else {
             $this->fail("Error: La Card no se vació. Saldo: $pendiente_post");
+            $flujo_ok = false;
         }
         
         // Limpieza final
         $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['id' => $gasto_id]);
+
+        $detalle_flujo = $flujo_ok ? 'La tarjeta de Secretaría refleja entrada y salida correctamente.' : 'Hubo desajustes al simular la tarjeta de Secretaría.';
+        $this->agregar_resumen('Secretaría', 'Flujo de caja y entrega a secretaria', $flujo_ok ? 'OK' : 'ERROR', $detalle_flujo);
     }
 
-    // --- TEST 12: RADAR DE MOROSOS ---
+    // --- TEST 14: RADAR DE MOROSOS ---
     private function test_radar_morosos($user_id) {
-        $this->header("CASO 12: Prueba de Radar de Morosos");
+        $this->header("CASO 14: Prueba de Radar de Morosos");
         global $wpdb;
         $this->reset_db_test($user_id);
+        $radar_ok = true;
 
         // ESCENARIO 1: Usuario al día
         $mes_pasado = date('Y-m-d', strtotime('first day of last month'));
@@ -759,6 +955,7 @@ class LUD_Debug_Tools {
             $this->pass("Usuario NO aparece en radar (Correcto).");
         } else {
             $this->fail("Usuario aparece como moroso incorrectamente.");
+            $radar_ok = false;
         }
 
         // ESCENARIO 2: Usuario atrasado (Pago hace 3 meses)
@@ -772,6 +969,7 @@ class LUD_Debug_Tools {
             $this->pass("¡Alerta Activada! Usuario detectado en radar de morosos.");
         } else {
             $this->fail("Fallo: El sistema ignora al moroso.");
+            $radar_ok = false;
         }
 
         // ESCENARIO 3: Usuario al día en aportes, pero con Crédito en Mora
@@ -791,7 +989,74 @@ class LUD_Debug_Tools {
             $this->pass("¡Alerta Activada! Usuario detectado por Crédito en Mora.");
         } else {
             $this->fail("Fallo: El sistema ignora la mora del crédito.");
+            $radar_ok = false;
         }
+
+        $detalle_radar = $radar_ok ? 'Las tres combinaciones de mora fueron detectadas correctamente.' : 'Alguna combinación de mora no fue detectada por el radar.';
+        $this->agregar_resumen('Morosidad', 'Radar combinado de morosos', $radar_ok ? 'OK' : 'ERROR', $detalle_radar);
+    }
+
+    // --- TEST 15: VALIDACIÓN DEL TABLERO FINANCIERO ---
+    private function test_validacion_dashboard_resumen() {
+        $this->header("CASO 15: Validación rápida de KPIs del dashboard");
+        global $wpdb;
+
+        $estado_inicial = $this->tomar_resumen_financiero();
+        $monto_recaudo = 12000;
+        $monto_gasto = 2000;
+        $transaccion_prueba = time();
+        $user_ref = get_current_user_id() ? get_current_user_id() : 1;
+
+        $wpdb->insert("{$wpdb->prefix}fondo_recaudos_detalle", [
+            'transaccion_id' => $transaccion_prueba,
+            'user_id' => $user_ref,
+            'concepto' => 'ahorro',
+            'monto' => $monto_recaudo,
+            'fecha_recaudo' => current_time('mysql')
+        ]);
+
+        $wpdb->insert("{$wpdb->prefix}fondo_gastos", [
+            'categoria' => 'test_dashboard',
+            'descripcion' => 'TEST KPIs Dashboard ' . $transaccion_prueba,
+            'monto' => $monto_gasto,
+            'registrado_por' => $user_ref,
+            'fecha_gasto' => current_time('mysql')
+        ]);
+
+        $estado_final = $this->tomar_resumen_financiero();
+
+        $delta_entradas = $estado_final['entradas'] - $estado_inicial['entradas'];
+        $delta_gastos = $estado_final['gastos'] - $estado_inicial['gastos'];
+
+        if ( abs($delta_entradas - $monto_recaudo) < 1 && abs($delta_gastos - $monto_gasto) < 1 ) {
+            $this->pass("Los KPI reaccionaron al ingreso ($monto_recaudo) y gasto ($monto_gasto) de prueba.");
+            $this->agregar_resumen('Dashboard', 'KPIs de caja y gastos', 'OK', 'Las sumatorias de entradas y gastos responden a movimientos nuevos.');
+        } else {
+            $this->fail("Los KPI no cambiaron según lo esperado. ΔEntradas: $delta_entradas ΔGastos: $delta_gastos");
+            $this->agregar_resumen('Dashboard', 'KPIs de caja y gastos', 'ERROR', 'El tablero no reflejó el movimiento de prueba.');
+        }
+
+        $wpdb->delete("{$wpdb->prefix}fondo_recaudos_detalle", ['transaccion_id' => $transaccion_prueba]);
+        $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['categoria' => 'test_dashboard', 'descripcion' => 'TEST KPIs Dashboard ' . $transaccion_prueba]);
+    }
+
+    // --- HELPER: RESUMEN FINANCIERO EXPRESS ---
+    private function tomar_resumen_financiero() {
+        // Devuelve un snapshot simple para validar el dashboard sin renderizarlo
+        global $wpdb;
+
+        $entradas = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle") );
+        $gastos = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos") );
+        $prestado = floatval( $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo','pagado','mora')") );
+        $recaudo_sec = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria'") );
+        $gasto_sec = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria'") );
+
+        return [
+            'entradas' => $entradas,
+            'gastos' => $gastos,
+            'prestado' => $prestado,
+            'pendiente_secretaria' => $recaudo_sec - $gasto_sec
+        ];
     }
 
     // --- HELPER DE LIMPIEZA PARA TESTS ---
@@ -801,6 +1066,16 @@ class LUD_Debug_Tools {
         $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id");
         $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = $user_id");
         $wpdb->query("DELETE FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE user_id = $user_id");
+    }
+
+    // --- HELPER DE RESUMEN EJECUTIVO ---
+    private function agregar_resumen($categoria, $caso, $resultado, $detalle) {
+        $this->resumen[] = [
+            'categoria' => $categoria,
+            'caso' => $caso,
+            'resultado' => $resultado,
+            'detalle' => $detalle
+        ];
     }
 
     private function log($msg) { $this->log[] = $msg; }
