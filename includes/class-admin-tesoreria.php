@@ -18,6 +18,7 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_rechazar_registro', array( $this, 'procesar_rechazo_registro' ) );
         add_action( 'admin_post_lud_cancelar_cambio_acciones', array( $this, 'procesar_cancelacion_acciones' ) );
         add_action( 'admin_post_lud_guardar_edicion_socio', array( $this, 'procesar_edicion_socio' ) );
+        add_action( 'admin_post_lud_entregar_secretaria', array( $this, 'procesar_entrega_secretaria' ) );
     }
 
     public function register_menu() {
@@ -130,6 +131,68 @@ class LUD_Admin_Tesoreria {
         
         $disponible_para_creditos = $dinero_fisico - $fondo_secretaria;
 
+        // --- INICIO: NUEVOS CÁLCULOS KPI (AGREGAR ESTO) ---
+        $mes_actual = date('m');
+        $anio_actual = date('Y');
+
+        // 1. Intereses Totales Año en Curso (Rentabilidad)
+        // Sumamos interés corriente y la nueva mora del 4% [cite: 181]
+        $intereses_ytd = $wpdb->get_var("
+            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
+            WHERE concepto IN ('interes_credito', 'interes_mora_credito') 
+            AND YEAR(fecha_recaudo) = $anio_actual
+        ");
+
+        // 2. Multas Año en Curso
+        $multas_ytd = $wpdb->get_var("
+            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
+            WHERE concepto = 'multa' 
+            AND YEAR(fecha_recaudo) = $anio_actual
+        ");
+
+        // 3. Caja Secretaría (Solo Mes Actual)
+        // Lo que entró por concepto 'cuota_secretaria' este mes
+        $recaudo_sec_mes = $wpdb->get_var("
+            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
+            WHERE concepto = 'cuota_secretaria' 
+            AND MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual
+        ");
+        // Lo que ya se le entregó (Gastó) a la secretaria este mes
+        $pagado_sec_mes = $wpdb->get_var("
+            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos 
+            WHERE categoria = 'secretaria' 
+            AND MONTH(fecha_gasto) = $mes_actual AND YEAR(fecha_gasto) = $anio_actual
+        ");
+        $pendiente_entrega_sec = floatval($recaudo_sec_mes) - floatval($pagado_sec_mes);
+
+        // 4. Proyección de Meta (Faltante por Recaudar)
+        // Calculamos cuántas acciones activas hay para saber cuánto debería entrar fijo
+        $total_acciones_activas = $wpdb->get_var("SELECT SUM(numero_acciones) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'");
+        $meta_aporte_ideal = $total_acciones_activas * 51000; // 50k Ahorro + 1k Sec
+        
+        // Cuánto ha entrado realmente por Ahorro + Secretaría este mes
+        $recaudo_real_aporte = $wpdb->get_var("
+            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
+            WHERE concepto IN ('ahorro', 'cuota_secretaria') 
+            AND MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual
+        ");
+        
+        $faltante_meta = $meta_aporte_ideal - floatval($recaudo_real_aporte);
+        // Si ya superamos la meta (ej. pagos adelantados), mostramos 0, sino el negativo.
+        $indicador_meta = ($faltante_meta > 0) ? ($faltante_meta * -1) : 0; 
+
+        // 5. Radar de Morosos (Lógica combinada: Aportes viejos OR Créditos en Mora)
+        $fecha_corte_mora = date('Y-m-01', strtotime('-1 month')); // Si su ultimo aporte es anterior al mes pasado
+        $morosos = $wpdb->get_results("
+            SELECT u.display_name, c.fecha_ultimo_aporte, cr.saldo_actual 
+            FROM {$wpdb->prefix}fondo_cuentas c
+            JOIN {$wpdb->users} u ON c.user_id = u.ID
+            LEFT JOIN {$wpdb->prefix}fondo_creditos cr ON c.user_id = cr.user_id AND cr.estado = 'mora'
+            WHERE (c.fecha_ultimo_aporte < '$fecha_corte_mora' AND c.estado_socio = 'activo')
+               OR (cr.id IS NOT NULL)
+            GROUP BY c.user_id
+        ");
+
         // 2. CONSULTAS PENDIENTES
         $pendientes = $wpdb->get_results( 
             "SELECT tx.*, u.user_email, u.display_name 
@@ -143,6 +206,7 @@ class LUD_Admin_Tesoreria {
              JOIN {$wpdb->users} u ON c.user_id = u.ID
              WHERE c.estado = 'pendiente_tesoreria'"
         );
+        
         ?>
         
         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px;">
@@ -161,7 +225,62 @@ class LUD_Admin_Tesoreria {
             </div>
         </div>
 
-        <?php if ( $puede_editar ): ?>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:30px;">
+            
+            <div class="lud-card" style="border-bottom: 4px solid #2980b9;">
+                <h4 style="margin:0; color:#7f8c8d;">📈 Intereses Ganados (Año)</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#2980b9;">$ <?php echo number_format(floatval($intereses_ytd), 0, ',', '.'); ?></div>
+                <small>Rentabilidad bruta del fondo.</small>
+                </div>
+
+            <div class="lud-card" style="border-bottom: 4px solid #c0392b;">
+                <h4 style="margin:0; color:#7f8c8d;">⚖️ Multas (Año)</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:#c0392b;">$ <?php echo number_format(floatval($multas_ytd), 0, ',', '.'); ?></div>
+                <small>Sanciones aplicadas.</small>
+            </div>
+
+            <div class="lud-card" style="border-bottom: 4px solid <?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;">
+                <h4 style="margin:0; color:#7f8c8d;">🎯 Meta Mensual</h4>
+                <div style="font-size:1.8rem; font-weight:bold; color:<?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;">
+                    $ <?php echo number_format($indicador_meta, 0, ',', '.'); ?>
+                </div>
+                <small><?php echo ($indicador_meta == 0) ? '✅ Meta Cumplida' : 'Falta recaudar en aportes'; ?></small>
+            </div>
+
+            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;">
+                <h4 style="margin:0; color:#e65100;">📂 Caja Secretaría (Mes)</h4>
+                <div style="font-size:1.5rem; font-weight:bold; color:#ef6c00;">$ <?php echo number_format($pendiente_entrega_sec, 0, ',', '.'); ?></div>
+                
+                <?php if($pendiente_entrega_sec > 0 && $puede_editar): ?>
+                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Confirmas que entregas el dinero FÍSICO a la secretaria? \n\nEsto creará un gasto y descontará el dinero de la Caja Mayor.');">
+                        <input type="hidden" name="action" value="lud_entregar_secretaria">
+                        <input type="hidden" name="monto" value="<?php echo $pendiente_entrega_sec; ?>">
+                        <?php wp_nonce_field('lud_pay_sec', 'security'); ?>
+                        <button class="button button-small" style="margin-top:5px; width:100%;">🤝 Confirmar Entrega</button>
+                    </form>
+                <?php elseif($pendiente_entrega_sec <= 0): ?>
+                    <small style="color:#27ae60;">✅ Al día (Entregado)</small>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <?php if ( !empty($morosos) ): ?>
+        <div class="lud-card" style="border-left: 5px solid #c0392b; margin-bottom:30px; background:#fff5f5;">
+            <h3 style="color:#c0392b; margin-top:0;">⚠️ Alerta de Cartera (Morosos)</h3>
+            <p>Los siguientes socios tienen retrasos superiores a 1 mes o créditos en mora:</p>
+            <ul style="list-style:disc; margin-left:20px;">
+                <?php foreach($morosos as $m): 
+                    $es_mora_credito = ($m->saldo_actual > 0);
+                    $detalle = $es_mora_credito ? "Crédito en Mora" : "Aporte atrasado (último: ".date('d/M/Y', strtotime($m->fecha_ultimo_aporte)).")";
+                ?>
+                    <li>
+                        <strong><?php echo $m->display_name; ?>:</strong> 
+                        <span style="color:#c0392b;"><?php echo $detalle; ?></span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+        <?php endif; ?> <?php if ( $puede_editar ): ?>
         
             <?php if(date('m') == '12'): ?>
             <div class="lud-card" style="border-left: 5px solid #e67e22; margin-bottom:30px;">
@@ -1182,6 +1301,40 @@ class LUD_Admin_Tesoreria {
         }
 
         wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=datos_actualizados") );
+        exit;
+    }
+
+    public function procesar_entrega_secretaria() {
+        if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Sin permisos');
+        check_admin_referer('lud_pay_sec', 'security');
+        
+        global $wpdb;
+        $monto = floatval($_POST['monto']);
+        $user_id = get_current_user_id();
+
+        if ($monto <= 0) wp_die('Monto inválido');
+
+        // Insertar como GASTO OPERATIVO para que descuente de la caja física 
+        // Categoría 'secretaria' es clave para que la card sepa que ya se pagó.
+        $wpdb->insert(
+            $wpdb->prefix . 'fondo_gastos',
+            array(
+                'categoria' => 'secretaria',
+                'descripcion' => 'Entrega de recaudo mensual a Secretaría (Caja Menor)',
+                'monto' => $monto,
+                'registrado_por' => $user_id,
+                'fecha_gasto' => current_time('mysql')
+            )
+        );
+
+        // Opcional: Registrar log en transacciones para auditoría
+        $wpdb->insert($wpdb->prefix . 'fondo_transacciones', [
+            'user_id' => $user_id, 'tipo' => 'gasto_operativo', 'monto' => $monto, 
+            'estado' => 'aprobado', 'aprobado_por' => $user_id,
+            'detalle' => 'SISTEMA: Legalización entrega dinero a Secretaría'
+        ]);
+
+        wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=sec_paid') );
         exit;
     }
 

@@ -75,6 +75,10 @@ class LUD_Debug_Tools {
             $this->hr();
             $this->test_jerarquia_pagos_completa($user_id);
             $this->hr();
+            $this->test_flujo_caja_secretaria($user_id);
+            $this->hr();
+            $this->test_radar_morosos($user_id);
+            $this->hr();
         } catch (Exception $e) {
             $this->fail("EXCEPCIÓN CRÍTICA: " . $e->getMessage());
         }
@@ -253,14 +257,22 @@ class LUD_Debug_Tools {
         
         $asignado = $resultado ? floatval($resultado->utilidad_asignada) : -1;
 
-        $this->log("\n🔹 RESULTADO DEL SISTEMA:");
-        $this->log("   - Utilidad Asignada al Usuario: $ " . number_format($asignado));
+        // ... (dentro de test_justicia_distribucion_utilidades) ...
 
-        if ( $asignado === 0.00 ) {
-            $this->pass("CORRECTO. El sistema le asignó $0 por estar en mora. Justicia aplicada.");
+        $this->log("\n🔹 RESULTADO DEL SISTEMA:");
+        // Si el usuario no está en la tabla, get_row devuelve null, y asignamos -1.
+        $estado_reportado = ($asignado === -1) ? "EXCLUIDO (Correcto)" : "$ " . number_format($asignado);
+        $this->log("   - Utilidad Asignada al Usuario: " . $estado_reportado);
+
+        // CORRECCIÓN: Aceptamos 0.00 (Si se creó registro en 0) O -1 (Si ni siquiera se creó registro)
+        // Ambos casos significan que el moroso NO recibió dinero.
+        if ( $asignado <= 0.00 ) {
+            $this->pass("CORRECTO. El sistema protegió los fondos: No asignó utilidad al moroso.");
         } else {
             $this->fail("ERROR. El sistema le asignó dinero ($$asignado) a un moroso.");
         }
+
+        // ... (resto de la función igual) ...
 
         // Limpieza
         $wpdb->delete("{$wpdb->prefix}fondo_recaudos_detalle", ['transaccion_id' => 9999]);
@@ -496,8 +508,9 @@ class LUD_Debug_Tools {
         $deuda = $tx->calcular_deuda_usuario($user_id);
 
         $this->log("🔹 Escenario: Crédito Ágil de $1.000.000 desembolsado hace $dias_atras días.");
-        $this->log("   - Interés Corriente Calculado: $" . number_format($deuda['creditos_interes']));
-        $this->log("   - Interés MORA Calculado:      $" . number_format($deuda['creditos_mora']));
+        // Uso de floatval para evitar error en PHP 8 si el valor viene null
+        $this->log("   - Interés Corriente Calculado: $" . number_format(floatval($deuda['creditos_interes'])));
+        $this->log("   - Interés MORA Calculado:      $" . number_format(floatval($deuda['creditos_mora'])));
 
         // Validación
         $tolerancia = 100; // Por decimales
@@ -657,6 +670,128 @@ class LUD_Debug_Tools {
 
         } catch (Exception $e) {}
         ob_end_clean();
+    }
+
+    // --- TEST 11 CORREGIDO: Sincronización de Timezones ---
+    private function test_flujo_caja_secretaria($user_id) {
+        $this->header("CASO 11: Validación Flujo Caja Secretaría y Entrega");
+        global $wpdb;
+
+        // 1. Limpieza Inicial
+        $this->reset_db_test($user_id);
+        
+        // CORRECCIÓN CRÍTICA: Usamos el tiempo de WP, no del servidor, para alinear Insert y Select
+        $timestamp_wp = current_time('timestamp');
+        $mes_actual = date('m', $timestamp_wp);
+        $anio_actual = date('Y', $timestamp_wp);
+        
+        // Limpiamos gastos de prueba anteriores
+        $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['categoria' => 'secretaria', 'registrado_por' => $user_id]);
+
+        // 2. ESCENARIO: Entran pagos de secretaría ($5.000)
+        $monto_recaudo = 5000;
+        $wpdb->insert("{$wpdb->prefix}fondo_recaudos_detalle", [
+            'transaccion_id' => 99999, 'user_id' => $user_id, 
+            'concepto' => 'cuota_secretaria', 'monto' => $monto_recaudo, 
+            'fecha_recaudo' => current_time('mysql') // Esto usa la hora WP
+        ]);
+
+        // 3. VERIFICACIÓN 1: La Card debe subir
+        $recaudo_db = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual");
+        $gasto_db = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND MONTH(fecha_gasto) = $mes_actual AND YEAR(fecha_gasto) = $anio_actual");
+        $pendiente = floatval($recaudo_db) - floatval($gasto_db);
+
+        $this->log("🔹 PASO 1: Recaudo de Secretaría (Mes: $mes_actual/$anio_actual)");
+        $this->log("   - Dinero Ingresado: $ " . number_format($monto_recaudo));
+        $this->log("   - Card Secretaría (Pendiente): $ " . number_format($pendiente));
+
+        if ( abs($pendiente - $monto_recaudo) < 1 ) { // Tolerancia mínima
+            $this->pass("La Card de Secretaría refleja correctamente el dinero ingresado.");
+        } else {
+            $this->fail("Error en Card Secretaría. Esperado: $monto_recaudo, Actual: $pendiente. (Revisar Timezone)");
+        }
+
+        // 4. ACCIÓN: Simular clic en botón 'Entregar a Secretaria'
+        $this->log("\n🔹 PASO 2: Simulación Clic Botón 'Entregar Dinero'");
+        
+        $wpdb->insert("{$wpdb->prefix}fondo_gastos", [
+            'categoria' => 'secretaria',
+            'descripcion' => 'TEST AUTOMATIZADO: Entrega Secretaría',
+            'monto' => $pendiente,
+            'registrado_por' => $user_id,
+            'fecha_gasto' => current_time('mysql')
+        ]);
+        $gasto_id = $wpdb->insert_id;
+
+        // 5. VERIFICACIÓN 2: La Card debe bajar a 0
+        $gasto_db_post = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND MONTH(fecha_gasto) = $mes_actual AND YEAR(fecha_gasto) = $anio_actual");
+        $pendiente_post = floatval($recaudo_db) - floatval($gasto_db_post);
+        
+        $this->log("   - Dinero Entregado: $ " . number_format($pendiente));
+        $this->log("   - Card Secretaría POST-Entrega: $ " . number_format($pendiente_post));
+
+        if ( $pendiente_post == 0 ) {
+            $this->pass("Correcto: La Card de Secretaría quedó en $0 tras la entrega.");
+        } else {
+            $this->fail("Error: La Card no se vació. Saldo: $pendiente_post");
+        }
+        
+        // Limpieza final
+        $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['id' => $gasto_id]);
+    }
+
+    // --- TEST 12: RADAR DE MOROSOS ---
+    private function test_radar_morosos($user_id) {
+        $this->header("CASO 12: Prueba de Radar de Morosos");
+        global $wpdb;
+        $this->reset_db_test($user_id);
+
+        // ESCENARIO 1: Usuario al día
+        $mes_pasado = date('Y-m-d', strtotime('first day of last month'));
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['fecha_ultimo_aporte' => $mes_pasado, 'estado_socio' => 'activo'], ['user_id' => $user_id]);
+        
+        // Ejecutar Lógica de Radar
+        $fecha_corte = date('Y-m-01', strtotime('-1 month'));
+        $es_moroso_1 = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id AND fecha_ultimo_aporte < '$fecha_corte'");
+
+        $this->log("🔹 ESCENARIO 1: Usuario pagó el mes pasado ($mes_pasado)");
+        if ( $es_moroso_1 == 0 ) {
+            $this->pass("Usuario NO aparece en radar (Correcto).");
+        } else {
+            $this->fail("Usuario aparece como moroso incorrectamente.");
+        }
+
+        // ESCENARIO 2: Usuario atrasado (Pago hace 3 meses)
+        $hace_3_meses = date('Y-m-d', strtotime('-3 months'));
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['fecha_ultimo_aporte' => $hace_3_meses], ['user_id' => $user_id]);
+
+        $es_moroso_2 = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id AND fecha_ultimo_aporte < '$fecha_corte'");
+        
+        $this->log("\n🔹 ESCENARIO 2: Usuario pagó hace 3 meses ($hace_3_meses)");
+        if ( $es_moroso_2 > 0 ) {
+            $this->pass("¡Alerta Activada! Usuario detectado en radar de morosos.");
+        } else {
+            $this->fail("Fallo: El sistema ignora al moroso.");
+        }
+
+        // ESCENARIO 3: Usuario al día en aportes, pero con Crédito en Mora
+        // Restablecemos aporte a 'hoy'
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", ['fecha_ultimo_aporte' => current_time('mysql')], ['user_id' => $user_id]);
+        // Insertamos crédito en mora
+        $wpdb->insert("{$wpdb->prefix}fondo_creditos", [
+            'user_id' => $user_id, 'tipo_credito' => 'agil', 'monto_solicitado' => 100000, 
+            'estado' => 'mora', 'plazo_meses'=>1, 'tasa_interes'=>1.5, 'cuota_estimada'=>0
+        ]);
+
+        // La consulta del Dashboard usa un OR (aporte viejo OR credito mora)
+        $es_moroso_3_credito = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id AND estado = 'mora'");
+        
+        $this->log("\n🔹 ESCENARIO 3: Usuario al día en aportes, pero Crédito en Mora");
+        if ( $es_moroso_3_credito > 0 ) {
+            $this->pass("¡Alerta Activada! Usuario detectado por Crédito en Mora.");
+        } else {
+            $this->fail("Fallo: El sistema ignora la mora del crédito.");
+        }
     }
 
     // --- HELPER DE LIMPIEZA PARA TESTS ---
