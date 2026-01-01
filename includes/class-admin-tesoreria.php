@@ -152,7 +152,7 @@ class LUD_Admin_Tesoreria {
         
         $disponible_para_creditos = $dinero_fisico - $fondo_secretaria;
 
-        // --- INICIO: NUEVOS CÁLCULOS KPI (AGREGAR ESTO) ---
+        // --- INICIO: NUEVOS CÁLCULOS KPI ---
         $mes_actual = date('m');
         $anio_actual = date('Y');
 
@@ -743,7 +743,7 @@ class LUD_Admin_Tesoreria {
         <?php
     }
 
-    // --- VISTA 4: HISTORIAL DE INTERESES PAGADOS (NUEVA) ---
+    // --- VISTA 4: HISTORIAL DE INTERESES PAGADOS ---
     /**
      * Lista las liquidaciones de intereses pagados en años anteriores.
      */
@@ -1163,7 +1163,7 @@ class LUD_Admin_Tesoreria {
         exit;
     }
 
-    // --- FUNCIÓN PUENTE PARA DEBUG TOOLS (AGREGAR AL FINAL DE LA CLASE) ---
+    // --- FUNCIÓN PUENTE PARA DEBUG TOOLS ---
     /**
      * Calcula la utilidad del mes actual sumando intereses y multas menos gastos.
      */

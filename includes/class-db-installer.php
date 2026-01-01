@@ -18,7 +18,7 @@ class LUD_DB_Installer {
 
         $sql = [];
 
-        // 1. Cuentas Maestras (CORREGIDO: Sin duplicados)
+        // 1. Cuentas Maestras
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_cuentas (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -62,7 +62,7 @@ class LUD_DB_Installer {
             UNIQUE KEY user_id (user_id)
         ) $charset_collate;";
 
-        // 2. Transacciones (Intacto)
+        // 2. Transacciones
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_transacciones (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -78,7 +78,7 @@ class LUD_DB_Installer {
             KEY user_id (user_id)
         ) $charset_collate;";
 
-        // 3. Créditos (Intacto)
+        // 3. Créditos
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_creditos (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT(20) UNSIGNED NOT NULL,
@@ -104,7 +104,7 @@ class LUD_DB_Installer {
             KEY user_id (user_id)
         ) $charset_collate;";
 
-        // 4. Tabla de Amortización (Intacto)
+        // 4. Tabla de Amortización
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_amortizacion (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             credito_id BIGINT(20) UNSIGNED NOT NULL,
@@ -119,7 +119,7 @@ class LUD_DB_Installer {
             KEY credito_id (credito_id)
         ) $charset_collate;";
 
-        // 5. Gastos Operativos (Intacto)
+        // 5. Gastos Operativos
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_gastos (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             categoria VARCHAR(50) NOT NULL,
@@ -130,7 +130,7 @@ class LUD_DB_Installer {
             fecha_gasto DATETIME DEFAULT CURRENT_TIMESTAMP
         ) $charset_collate;";
 
-        // 6. Desglose Financiero (Intacto)
+        // 6. Desglose Financiero
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_recaudos_detalle (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             transaccion_id BIGINT(20) UNSIGNED NOT NULL,
@@ -142,7 +142,7 @@ class LUD_DB_Installer {
             KEY concepto (concepto)
         ) $charset_collate;";
 
-        // 7. Utilidades Mensuales (Intacto)
+        // 7. Utilidades Mensuales
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_utilidades_mensuales (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT(20) UNSIGNED NOT NULL,
