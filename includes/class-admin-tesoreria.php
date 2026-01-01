@@ -229,14 +229,14 @@ class LUD_Admin_Tesoreria {
             <div class="lud-card" style="flex:1; min-width:300px; background:#2c3e50; color:#fff; cursor:help;" 
                  title="AYUDA: Esta es la suma de todo el dinero que debería haber físicamente en la Caja Fuerte. Si el conteo físico dice otra cosa, hay un descuadre.">
                 <h3 style="color:#bdc3c7; margin-top:0;">🏦 Dinero Total en Caja</h3>
-                <div style="font-size:2.5rem; font-weight:bold;">$ <?php echo number_format($dinero_fisico, 0, ',', '.'); ?></div>
+                <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($dinero_fisico, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">Arqueo físico total (Incluye Secretaría).</p>
             </div>
             
             <div class="lud-card" style="flex:1; min-width:300px; background:#27ae60; color:#fff; cursor:help;"
                  title="AYUDA: Este es el dinero que REALMENTE puedes prestar. El sistema ya restó automáticamente la plata que es de la Secretaría, para que no la toques.">
                 <h3 style="color:#a9dfbf; margin-top:0;">✅ Disponible para Prestar</h3>
-                <div style="font-size:2.5rem; font-weight:bold;">$ <?php echo number_format($disponible_para_creditos, 0, ',', '.'); ?></div>
+                <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($disponible_para_creditos, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">(Descontando $<?php echo number_format($fondo_secretaria); ?> de Secretaría)</p>
             </div>
         </div>
@@ -245,7 +245,7 @@ class LUD_Admin_Tesoreria {
             
             <div class="lud-card" style="border-bottom: 4px solid #2980b9;">
                 <h4 style="margin:0; color:#7f8c8d;">📈 Intereses Ganados (Año)</h4>
-                <div style="font-size:1.8rem; font-weight:bold; color:#2980b9;">$ <?php echo number_format(floatval($intereses_ytd), 0, ',', '.'); ?></div>
+                <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format(floatval($intereses_ytd), 0, ',', '.'); ?></div>
                 <small>Rentabilidad bruta del fondo.</small>
                 </div>
 
@@ -255,9 +255,10 @@ class LUD_Admin_Tesoreria {
                 <small>Sanciones aplicadas.</small>
             </div>
 
+            <?php $color_meta = ($indicador_meta < 0) ? '#c0392b' : '#111'; ?>
             <div class="lud-card" style="border-bottom: 4px solid <?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;">
                 <h4 style="margin:0; color:#7f8c8d;">🎯 Meta Mensual</h4>
-                <div style="font-size:1.8rem; font-weight:bold; color:<?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;">
+                <div style="font-size:1.8rem; font-weight:bold; color:<?php echo $color_meta; ?>;">
                     $ <?php echo number_format($indicador_meta, 0, ',', '.'); ?>
                 </div>
                 <small><?php echo ($indicador_meta == 0) ? '✅ Meta Cumplida' : 'Falta recaudar en aportes'; ?></small>
@@ -283,7 +284,7 @@ class LUD_Admin_Tesoreria {
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px; margin-bottom:30px;">
             <div class="lud-card" style="border-left: 4px solid #6c5ce7;">
                 <h4 style="margin:0; color:#7f8c8d;">💼 Cartera Vigente</h4>
-                <div style="font-size:1.8rem; font-weight:bold; color:#6c5ce7;">$ <?php echo number_format($cartera_vigente, 0, ',', '.'); ?></div>
+                <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($cartera_vigente, 0, ',', '.'); ?></div>
                 <small>Saldo total de créditos activos y en seguimiento.</small>
             </div>
 
@@ -295,32 +296,37 @@ class LUD_Admin_Tesoreria {
 
             <div class="lud-card" style="border-left: 4px solid #16a085;">
                 <h4 style="margin:0; color:#7f8c8d;">📊 Recaudo del Mes</h4>
-                <div style="font-size:1.8rem; font-weight:bold; color:#16a085;">$ <?php echo number_format($recaudo_mes_total, 0, ',', '.'); ?></div>
+                <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($recaudo_mes_total, 0, ',', '.'); ?></div>
                 <small>Incluye ahorro, créditos y multas.</small>
             </div>
 
             <div class="lud-card" style="border-left: 4px solid #e67e22;">
                 <h4 style="margin:0; color:#7f8c8d;">💸 Gasto Operativo del Mes</h4>
-                <div style="font-size:1.8rem; font-weight:bold; color:#e67e22;">$ <?php echo number_format($gasto_mes_total, 0, ',', '.'); ?></div>
+                <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($gasto_mes_total, 0, ',', '.'); ?></div>
                 <small>Pagos ya egresados del fondo.</small>
             </div>
 
             <div class="lud-card" style="border-left: 4px solid #009688;">
                 <h4 style="margin:0; color:#7f8c8d;">🎯 Cumplimiento Aportes</h4>
-                <div style="font-size:1.8rem; font-weight:bold; color:#009688;"><?php echo $porcentaje_cumplimiento; ?>%</div>
+                <div style="font-size:1.8rem; font-weight:bold; color:#111;"><?php echo $porcentaje_cumplimiento; ?>%</div>
                 <small><?php echo ($porcentaje_cumplimiento >= 100) ? 'Meta alcanzada' : 'Seguimos recolectando.'; ?></small>
             </div>
 
             <div class="lud-card" style="border-left: 4px solid #27ae60;">
                 <h4 style="margin:0; color:#7f8c8d;">🧮 Créditos en Cola</h4>
-                <div style="font-size:1.8rem; font-weight:bold; color:#27ae60;"><?php echo $creditos_pendientes_total; ?> solicitudes</div>
+                <div style="font-size:1.8rem; font-weight:bold; color:#111;"><?php echo $creditos_pendientes_total; ?> solicitudes</div>
                 <small>Por desembolsar: $ <?php echo number_format($creditos_pendientes_monto, 0, ',', '.'); ?></small>
             </div>
 
             <div class="lud-card" style="border-left: 4px solid #2d3436;">
                 <h4 style="margin:0; color:#7f8c8d;">👥 Socios Activos</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#2d3436;"><?php echo $socios_activos; ?></div>
-                <small><?php echo $socios_morosos; ?> con alerta en cartera.</small>
+                <?php 
+                // Comentario: Se listan los nombres con alerta para transparencia.
+                $nombres_morosos = array_map( function( $m ) { return $m->display_name; }, $morosos );
+                $texto_morosos = (!empty($nombres_morosos)) ? implode(', ', $nombres_morosos) : 'Sin alertas en cartera';
+                ?>
+                <small><?php echo $socios_morosos; ?> con alerta en cartera: <?php echo esc_html($texto_morosos); ?></small>
             </div>
         </div>
 
@@ -543,7 +549,20 @@ class LUD_Admin_Tesoreria {
         $user = get_userdata($user_id);
         $cuenta = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = $user_id");
         
-        $transacciones = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = $user_id ORDER BY fecha_registro DESC LIMIT 10");
+        $fecha_inicio = isset($_GET['f_inicio']) ? sanitize_text_field($_GET['f_inicio']) : '';
+        $fecha_fin = isset($_GET['f_fin']) ? sanitize_text_field($_GET['f_fin']) : '';
+
+        // Comentario: Armamos la cláusula de fechas para filtrar el historial de transacciones.
+        $filtro_fechas = "";
+        if ( $fecha_inicio && $fecha_fin ) {
+            $filtro_fechas = $wpdb->prepare("AND DATE(fecha_registro) BETWEEN %s AND %s", $fecha_inicio, $fecha_fin);
+        } elseif ( $fecha_inicio ) {
+            $filtro_fechas = $wpdb->prepare("AND DATE(fecha_registro) >= %s", $fecha_inicio);
+        } elseif ( $fecha_fin ) {
+            $filtro_fechas = $wpdb->prepare("AND DATE(fecha_registro) <= %s", $fecha_fin);
+        }
+
+        $transacciones = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = $user_id $filtro_fechas ORDER BY fecha_registro DESC");
         $creditos = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id ORDER BY fecha_solicitud DESC");
         
         $tx_module = new LUD_Module_Transacciones(); 
@@ -655,14 +674,41 @@ class LUD_Admin_Tesoreria {
 
         <div class="lud-card" style="margin-top:20px;">
             <h3>🧾 Últimas Transacciones</h3>
+            <form method="GET" style="margin-bottom:10px; display:flex; gap:10px; align-items:flex-end;">
+                <input type="hidden" name="page" value="lud-tesoreria">
+                <input type="hidden" name="view" value="detalle_socio">
+                <input type="hidden" name="id" value="<?php echo $user_id; ?>">
+                <div>
+                    <label for="f_inicio" style="font-weight:bold;">Desde:</label><br>
+                    <input type="date" id="f_inicio" name="f_inicio" value="<?php echo esc_attr($fecha_inicio); ?>">
+                </div>
+                <div>
+                    <label for="f_fin" style="font-weight:bold;">Hasta:</label><br>
+                    <input type="date" id="f_fin" name="f_fin" value="<?php echo esc_attr($fecha_fin); ?>">
+                </div>
+                <button class="button button-secondary" type="submit">Filtrar</button>
+                <a class="button" href="?page=lud-tesoreria&view=detalle_socio&id=<?php echo $user_id; ?>">Limpiar</a>
+            </form>
             <table class="widefat striped">
-                <thead><tr><th>Fecha</th><th>Monto</th><th>Estado</th><th>Detalle</th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Monto</th><th>Estado</th><th>Detalle</th><th>Comprobante</th></tr></thead>
                 <?php foreach($transacciones as $t): ?>
                 <tr>
                     <td><?php echo date('d/M/Y', strtotime($t->fecha_registro)); ?></td>
                     <td>$ <?php echo number_format($t->monto); ?></td>
                     <td><?php echo ucfirst($t->estado); ?></td>
                     <td><?php echo $t->detalle; ?></td>
+                    <td>
+                        <?php
+                        // Comentario: Si existe un archivo de comprobante, se muestra enlace directo al upload seguro.
+                        if ( !empty($t->comprobante_url) ) {
+                            $uploads = wp_upload_dir();
+                            $ruta_segura = trailingslashit($uploads['baseurl']) . 'fondo_seguro/' . $t->comprobante_url;
+                            echo '<a href="'.esc_url($ruta_segura).'" target="_blank">Ver archivo</a>';
+                        } else {
+                            echo '-';
+                        }
+                        ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             </table>
