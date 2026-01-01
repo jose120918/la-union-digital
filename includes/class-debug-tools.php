@@ -1,4 +1,10 @@
 <?php
+/**
+ * Herramientas de depuración y pruebas automatizadas.
+ *
+ * Permite correr una batería de tests de caja de cristal y mostrar resultados
+ * para auditoría técnica dentro de WordPress.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class LUD_Debug_Tools {
@@ -6,16 +12,25 @@ class LUD_Debug_Tools {
     private $log = [];
     private $resumen = [];
 
+    /**
+     * Registra el menú y el endpoint para ejecutar pruebas.
+     */
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'register_debug_menu' ) );
         add_action( 'admin_post_lud_run_tests', array( $this, 'ejecutar_bateria_pruebas' ) );
     }
 
+    /**
+     * Crea el menú de pruebas (solo visible para administradores técnicos).
+     */
     public function register_debug_menu() {
         // CAMBIO: 'manage_options' -> 'update_core'
         // Esto oculta el menú para Tesoreros y Secretarias, solo lo ve el Administrador Técnico.
         add_menu_page( 'Panel de Pruebas', '🧪 LUD Tests', 'update_core', 'lud-debug', array( $this, 'render_debug_page' ), 'dashicons-beaker', 99 );
     }
+    /**
+     * Muestra la interfaz de ejecución de pruebas y la bitácora.
+     */
     public function render_debug_page() {
         $datos_transitorio = get_transient( 'lud_test_logs' );
         $logs = '';
@@ -83,6 +98,9 @@ class LUD_Debug_Tools {
         }
     }
 
+    /**
+     * Ejecuta la suite de pruebas internas y guarda el resultado en un transitorio.
+     */
     public function ejecutar_bateria_pruebas() {
         if ( ! current_user_can( 'manage_options' ) ) wp_die('Acceso denegado');
         check_admin_referer( 'run_tests_nonce', 'security' );
@@ -144,6 +162,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 1: INGRESO DE DINERO BASE ---
+    /**
+     * Valida que un ingreso de dinero se despiece correctamente entre ahorro y secretaría.
+     */
     private function test_ingreso_dinero_controlado($user_id) {
         $this->header("CASO 1: Registro de ingreso de dinero y despiece base");
         global $wpdb;
@@ -199,6 +220,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 2: CÁLCULO DE DEUDA Y MULTAS (Detallado) ---
+    /**
+     * Comprueba el cálculo de deuda y multas al avanzar un mes sin pago.
+     */
     private function test_calculo_deuda_y_multas($user_id) {
         $this->header("CASO 2: Validación de Mora y Multas");
         
@@ -285,6 +309,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 3: REGLA 70% (Detallado) ---
+    /**
+     * Revisa que la regla del 70% de capital pagado se cumpla antes de refinanciar.
+     */
     private function test_regla_del_70_porciento($user_id) {
         $this->header("CASO 3: Regla del 70% (Refinanciación)");
         global $wpdb;
@@ -325,6 +352,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 4: JUSTICIA EN UTILIDADES (Detallado) ---
+    /**
+     * Evalúa el reparto proporcional de utilidades mensuales según acciones.
+     */
     private function test_justicia_distribucion_utilidades($user_id) {
         $this->header("CASO 4: Repartición Justa de Utilidades");
         global $wpdb;
@@ -393,6 +423,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 5: LIQUIDEZ ---
+    /**
+     * Confirma que la liquidez del fondo descuente correctamente la reserva de secretaría.
+     */
     private function test_liquidez_reservada() {
         $this->header("CASO 5: Cálculo de Liquidez Real");
         global $wpdb;
@@ -434,6 +467,9 @@ class LUD_Debug_Tools {
     }
 
     // --- HELPERS ---
+    /**
+     * Crea o recupera un usuario de pruebas para las simulaciones financieras.
+     */
     private function get_or_create_dummy_user() {
         $user = get_user_by('login', 'test_bot');
         if ( ! $user ) {
@@ -450,6 +486,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 6: CAMBIO DE ACCIONES PROGRAMADO ---
+    /**
+     * Verifica que un cambio de acciones programado se aplique en la fecha efectiva.
+     */
     private function test_cambio_acciones_programado($user_id) {
         $this->header("CASO 6: Automatización de Cambio de Acciones");
         global $wpdb;
@@ -505,6 +544,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 7: GESTIÓN DE DATOS MAESTROS Y SEGURIDAD ---
+    /**
+     * Comprueba que las ediciones en la ficha maestra del socio se almacenen correctamente.
+     */
     private function test_edicion_datos_maestros($user_id) {
         $this->header("CASO 7: Validación de Edición de Datos y Bloqueos");
         global $wpdb;
@@ -604,6 +646,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 8: CRÉDITO ÁGIL CON MORA (El caso crítico) ---
+    /**
+     * Simula un crédito ágil vencido para validar intereses de mora.
+     */
     private function test_credito_agil_con_mora($user_id) {
         $this->header("CASO 8: Cálculo de Mora en Crédito Ágil (4%)");
         global $wpdb;
@@ -651,6 +696,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 9: CRÉDITO ÁGIL AL DÍA (Sin mora) ---
+    /**
+     * Simula un crédito ágil pagado a tiempo para validar intereses corrientes.
+     */
     private function test_credito_agil_al_dia($user_id) {
         $this->header("CASO 9: Crédito Ágil sin Vencer");
         global $wpdb;
@@ -681,6 +729,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 10: CRÉDITO CORRIENTE (No debe aplicar el 4%) ---
+    /**
+     * Genera un crédito corriente y verifica la primera cuota programada.
+     */
     private function test_credito_corriente_sin_mora($user_id) {
         $this->header("CASO 10: Exclusión de Mora en Crédito Corriente");
         global $wpdb;
@@ -710,6 +761,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 11: ABONO DIRECTO A CAPITAL ---
+    /**
+     * Revisa que los abonos extra a capital se registren como excedentes.
+     */
     private function test_abono_capital_directo($user_id) {
         $this->header("CASO 11: Abono directo a capital de crédito");
         global $wpdb;
@@ -764,6 +818,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 12: JERARQUÍA DE PAGOS (Desglose del Dinero) ---
+    /**
+     * Valida el orden de distribución de pagos: ahorro, secretaría, multas y créditos.
+     */
     private function test_jerarquia_pagos_completa($user_id) {
         $this->header("CASO 12: Validación de Jerarquía de Pagos");
         global $wpdb;
@@ -862,6 +919,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 13 CORREGIDO: Sincronización de Timezones ---
+    /**
+     * Comprueba el ciclo de recaudo y entrega de la caja de secretaría.
+     */
     private function test_flujo_caja_secretaria($user_id) {
         $this->header("CASO 13: Validación Flujo Caja Secretaría y Entrega");
         global $wpdb;
@@ -936,6 +996,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 14: RADAR DE MOROSOS ---
+    /**
+     * Confirma que los socios morosos aparezcan en la lista de alerta.
+     */
     private function test_radar_morosos($user_id) {
         $this->header("CASO 14: Prueba de Radar de Morosos");
         global $wpdb;
@@ -997,6 +1060,9 @@ class LUD_Debug_Tools {
     }
 
     // --- TEST 15: VALIDACIÓN DEL TABLERO FINANCIERO ---
+    /**
+     * Revisa que los indicadores principales del dashboard calculen valores mayores a cero.
+     */
     private function test_validacion_dashboard_resumen() {
         $this->header("CASO 15: Validación rápida de KPIs del dashboard");
         global $wpdb;
@@ -1041,6 +1107,9 @@ class LUD_Debug_Tools {
     }
 
     // --- HELPER: RESUMEN FINANCIERO EXPRESS ---
+    /**
+     * Obtiene un resumen numérico del estado del fondo para validarlo en pruebas.
+     */
     private function tomar_resumen_financiero() {
         // Devuelve un snapshot simple para validar el dashboard sin renderizarlo
         global $wpdb;
@@ -1060,6 +1129,9 @@ class LUD_Debug_Tools {
     }
 
     // --- HELPER DE LIMPIEZA PARA TESTS ---
+    /**
+     * Limpia los datos generados durante las pruebas automáticas.
+     */
     private function reset_db_test($user_id) {
         global $wpdb;
         // Borrar créditos, transacciones y recaudos del usuario de prueba
@@ -1069,6 +1141,9 @@ class LUD_Debug_Tools {
     }
 
     // --- HELPER DE RESUMEN EJECUTIVO ---
+    /**
+     * Agrega un ítem al resumen ejecutivo mostrado al finalizar las pruebas.
+     */
     private function agregar_resumen($categoria, $caso, $resultado, $detalle) {
         $this->resumen[] = [
             'categoria' => $categoria,
@@ -1078,9 +1153,24 @@ class LUD_Debug_Tools {
         ];
     }
 
+    /**
+     * Guarda un mensaje en la bitácora general.
+     */
     private function log($msg) { $this->log[] = $msg; }
+    /**
+     * Inserta una línea divisoria en el log para facilitar lectura.
+     */
     private function hr() { $this->log[] = "----------------------------------------------------------------"; }
+    /**
+     * Destaca un encabezado dentro de la bitácora.
+     */
     private function header($msg) { $this->log[] = "\n>>> $msg <<<"; }
+    /**
+     * Marca un caso como exitoso dentro del log.
+     */
     private function pass($msg) { $this->log[] = "<span style='color:#4caf50; font-weight:bold;'>✅ PASS: $msg</span>"; }
+    /**
+     * Marca un caso como fallido dentro del log.
+     */
     private function fail($msg) { $this->log[] = "<span style='color:#f44336; font-weight:bold;'>❌ FAIL: $msg</span>"; }
 }

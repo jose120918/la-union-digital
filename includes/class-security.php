@@ -1,13 +1,25 @@
 <?php
+/**
+ * Seguridad y control de acceso a archivos sensibles.
+ *
+ * Esta clase expone un endpoint seguro para entregar comprobantes alojados en
+ * la carpeta protegida del plugin sin exponer rutas directas.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class LUD_Security {
 
+    /**
+     * Registra los hooks necesarios para servir comprobantes bajo control.
+     */
     public function __construct() {
         // Hook para servir la imagen de forma segura
         add_action( 'admin_post_lud_ver_comprobante', array( $this, 'servir_imagen_segura' ) );
     }
 
+    /**
+     * Entrega un archivo almacenado en la carpeta segura si el usuario tiene permisos.
+     */
     public function servir_imagen_segura() {
         // 1. Verificar Permisos (Solo Admin/Tesorero puede ver esto)
         if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'lud_manage_tesoreria' ) && ! current_user_can( 'lud_view_tesoreria' ) ) {

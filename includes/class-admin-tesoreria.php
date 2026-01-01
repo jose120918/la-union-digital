@@ -1,8 +1,17 @@
 <?php
+/**
+ * Panel administrativo de Tesorería del Fondo La Unión.
+ *
+ * Gestiona dashboards para tesorería, presidencia y secretaría, además de procesar
+ * aprobaciones, rechazos y cálculos automáticos del fondo.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class LUD_Admin_Tesoreria {
 
+    /**
+     * Registra menús y endpoints de administración.
+     */
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'register_menu' ) );
         
@@ -21,6 +30,9 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_entregar_secretaria', array( $this, 'procesar_entrega_secretaria' ) );
     }
 
+    /**
+     * Crea el menú principal de tesorería visible para los roles con permiso.
+     */
     public function register_menu() {
         // Usamos 'lud_view_tesoreria' para que Secretaria, Presidente y Tesorero puedan ver
         add_menu_page( 'Tesorería', '💰 Tesorería', 'lud_view_tesoreria', 'lud-tesoreria', array( $this, 'router_views' ), 'dashicons-money-alt', 2 );
@@ -28,6 +40,9 @@ class LUD_Admin_Tesoreria {
 
     /**
      * ENRUTADOR DE VISTAS
+     */
+    /**
+     * Enruta la vista solicitada y ejecuta verificaciones automáticas.
      */
     public function router_views() {
         // --- AUTOMATIZACIÓN: CIERRE MENSUAL ---
@@ -69,6 +84,9 @@ class LUD_Admin_Tesoreria {
      * Revisa si hay cambios de acciones programados que ya deban aplicarse hoy.
      * Se ejecuta al cargar la tesorería.
      */
+    /**
+     * Aplica automáticamente los cambios de acciones programados para la fecha actual.
+     */
     public function ejecutar_cambios_programados() {
         // Buscamos usuarios con cambios pendientes
         $usuarios = get_users(array('meta_key' => 'lud_acciones_programadas'));
@@ -105,6 +123,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // --- VISTA 1: TABLERO GENERAL ---
+    /**
+     * Dibuja el tablero principal con KPIs y paneles operativos.
+     */
     private function render_dashboard_general() {
         global $wpdb;
         $anio_actual = date('Y');
@@ -243,20 +264,20 @@ class LUD_Admin_Tesoreria {
 
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:30px;">
             
-            <div class="lud-card" style="border-bottom: 4px solid #2980b9;">
+            <div class="lud-card" style="border-bottom: 4px solid #2980b9;" title="Ayuda: Suma de intereses corrientes y mora cobrados en el año. Útil para Presidencia.">
                 <h4 style="margin:0; color:#7f8c8d;">📈 Intereses Ganados (Año)</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format(floatval($intereses_ytd), 0, ',', '.'); ?></div>
                 <small>Rentabilidad bruta del fondo.</small>
                 </div>
 
-            <div class="lud-card" style="border-bottom: 4px solid #c0392b;">
+            <div class="lud-card" style="border-bottom: 4px solid #c0392b;" title="Ayuda: Multas cobradas a socios por retrasos. Útil para Secretaría.">
                 <h4 style="margin:0; color:#7f8c8d;">⚖️ Multas (Año)</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#c0392b;">$ <?php echo number_format(floatval($multas_ytd), 0, ',', '.'); ?></div>
                 <small>Sanciones aplicadas.</small>
             </div>
 
             <?php $color_meta = ($indicador_meta < 0) ? '#c0392b' : '#111'; ?>
-            <div class="lud-card" style="border-bottom: 4px solid <?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;">
+            <div class="lud-card" style="border-bottom: 4px solid <?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;" title="Ayuda: Diferencia entre lo que debía recaudar el fondo este mes y lo recibido.">
                 <h4 style="margin:0; color:#7f8c8d;">🎯 Meta Mensual</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:<?php echo $color_meta; ?>;">
                     $ <?php echo number_format($indicador_meta, 0, ',', '.'); ?>
@@ -264,7 +285,7 @@ class LUD_Admin_Tesoreria {
                 <small><?php echo ($indicador_meta == 0) ? '✅ Meta Cumplida' : 'Falta recaudar en aportes'; ?></small>
             </div>
 
-            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;">
+            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Muestra cuánto dinero de Secretaría se ha recaudado y falta entregar en el mes.">
                 <h4 style="margin:0; color:#e65100;">📂 Caja Secretaría (Mes)</h4>
                 <div style="font-size:1.5rem; font-weight:bold; color:#ef6c00;">$ <?php echo number_format($pendiente_entrega_sec, 0, ',', '.'); ?></div>
                 
@@ -282,43 +303,43 @@ class LUD_Admin_Tesoreria {
         </div>
 
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px; margin-bottom:30px;">
-            <div class="lud-card" style="border-left: 4px solid #6c5ce7;">
+            <div class="lud-card" style="border-left: 4px solid #6c5ce7;" title="Ayuda: Saldo vivo de todos los créditos activos.">
                 <h4 style="margin:0; color:#7f8c8d;">💼 Cartera Vigente</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($cartera_vigente, 0, ',', '.'); ?></div>
                 <small>Saldo total de créditos activos y en seguimiento.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #d63031;">
+            <div class="lud-card" style="border-left: 4px solid #d63031;" title="Ayuda: Valor de cartera que está en mora; indicador clave para Presidencia.">
                 <h4 style="margin:0; color:#7f8c8d;">🚨 Cartera en Mora</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#d63031;">$ <?php echo number_format($cartera_mora, 0, ',', '.'); ?></div>
                 <small><?php echo $porcentaje_mora; ?>% de la cartera vigente.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #16a085;">
+            <div class="lud-card" style="border-left: 4px solid #16a085;" title="Ayuda: Todo lo recibido este mes (ahorros, créditos y multas).">
                 <h4 style="margin:0; color:#7f8c8d;">📊 Recaudo del Mes</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($recaudo_mes_total, 0, ',', '.'); ?></div>
                 <small>Incluye ahorro, créditos y multas.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #e67e22;">
+            <div class="lud-card" style="border-left: 4px solid #e67e22;" title="Ayuda: Suma de pagos operativos hechos en el mes.">
                 <h4 style="margin:0; color:#7f8c8d;">💸 Gasto Operativo del Mes</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($gasto_mes_total, 0, ',', '.'); ?></div>
                 <small>Pagos ya egresados del fondo.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #009688;">
+            <div class="lud-card" style="border-left: 4px solid #009688;" title="Ayuda: Porcentaje de cumplimiento de aportes obligatorios en el mes.">
                 <h4 style="margin:0; color:#7f8c8d;">🎯 Cumplimiento Aportes</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;"><?php echo $porcentaje_cumplimiento; ?>%</div>
                 <small><?php echo ($porcentaje_cumplimiento >= 100) ? 'Meta alcanzada' : 'Seguimos recolectando.'; ?></small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #27ae60;">
+            <div class="lud-card" style="border-left: 4px solid #27ae60;" title="Ayuda: Solicitudes listas para desembolsar; prioriza según saldo disponible.">
                 <h4 style="margin:0; color:#7f8c8d;">🧮 Créditos en Cola</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;"><?php echo $creditos_pendientes_total; ?> solicitudes</div>
                 <small>Por desembolsar: $ <?php echo number_format($creditos_pendientes_monto, 0, ',', '.'); ?></small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #2d3436;">
+            <div class="lud-card" style="border-left: 4px solid #2d3436;" title="Ayuda: Total de socios activos y lista breve de alertas por mora.">
                 <h4 style="margin:0; color:#7f8c8d;">👥 Socios Activos</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#2d3436;"><?php echo $socios_activos; ?></div>
                 <?php 
@@ -485,6 +506,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // --- VISTA 2: BUSCADOR DE SOCIOS ---
+    /**
+     * Renderiza el buscador y listado básico de socios para consulta rápida.
+     */
     private function render_buscador_socios() {
         global $wpdb;
         $search = isset($_POST['s_socio']) ? sanitize_text_field($_POST['s_socio']) : '';
@@ -541,6 +565,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // --- VISTA 3: HOJA DE VIDA DETALLADA ---
+    /**
+     * Muestra la hoja de vida financiera de un socio específico.
+     */
     private function render_hoja_vida_socio() {
         if ( !isset($_GET['id']) ) return;
         $user_id = intval($_GET['id']);
@@ -717,6 +744,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // --- VISTA 4: HISTORIAL DE INTERESES PAGADOS (NUEVA) ---
+    /**
+     * Lista las liquidaciones de intereses pagados en años anteriores.
+     */
     private function render_historial_intereses() {
         global $wpdb;
         // Consulta: Agrupa por año y usuario los intereses que ya están en estado 'liquidado' (PAGADOS)
@@ -765,6 +795,9 @@ class LUD_Admin_Tesoreria {
 
     // --- FUNCIÓN RECUPERADA PARA DEBUG Y PRUEBAS ---
 
+    /**
+     * Verifica si falta cerrar el mes anterior y ejecuta el cálculo si aplica.
+     */
     public function verificar_cierre_automatico() {
         // Solo ejecuta si el usuario es Admin o Tesorero (para no sobrecargar si entra un socio cualquiera)
         if ( ! current_user_can('lud_manage_tesoreria') ) return;
@@ -791,6 +824,9 @@ class LUD_Admin_Tesoreria {
         }
     }
 
+    /**
+     * Calcula la utilidad generada en un mes y año concretos.
+     */
     private function calcular_utilidad_mes_especifico($mes, $anio) {
         global $wpdb;
         
@@ -839,6 +875,9 @@ class LUD_Admin_Tesoreria {
     // LOGICA DE NEGOCIO (SIN CAMBIOS)
     // =============================================================
 
+    /**
+     * Aprueba un pago pendiente y genera el desglose financiero.
+     */
     public function procesar_aprobacion() {
         if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Acceso denegado: No tienes permisos de Tesorero.');
         $tx_id = intval( $_POST['tx_id'] );
@@ -998,6 +1037,9 @@ class LUD_Admin_Tesoreria {
         }
     }
 
+    /**
+     * Marca un pago como rechazado y notifica en el historial.
+     */
     public function procesar_rechazo() {
         if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Acceso denegado: No tienes permisos de Tesorero.');
         $tx_id = intval( $_POST['tx_id'] );
@@ -1010,6 +1052,9 @@ class LUD_Admin_Tesoreria {
         exit;
     }
 
+    /**
+     * Desembolsa un crédito pendiente, mueve saldos y genera tabla de amortización.
+     */
     public function procesar_desembolso() {
         if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Acceso denegado: No tienes permisos de Tesorero.');
         check_admin_referer('lud_approve_credit', 'security');
@@ -1036,6 +1081,9 @@ class LUD_Admin_Tesoreria {
         exit;
     }
 
+    /**
+     * Genera la tabla de amortización para un crédito corriente.
+     */
     private function generar_tabla_amortizacion($credito_id) {
         global $wpdb;
         $tabla_amort = $wpdb->prefix . 'fondo_amortizacion';
@@ -1078,6 +1126,9 @@ class LUD_Admin_Tesoreria {
     // CIERRE Y LIQUIDACIÓN ANUAL
     // =============================================================
 
+    /**
+     * Permite ejecutar el cierre mensual de forma manual desde el panel.
+     */
     public function ejecutar_cierre_mensual_manual() {
         if (!current_user_can('manage_options')) wp_die('Sin permisos');
         // Este método queda por compatibilidad si se llama manual, 
@@ -1087,6 +1138,9 @@ class LUD_Admin_Tesoreria {
         exit;
     }
 
+    /**
+     * Liquida utilidades acumuladas en diciembre y registra los pagos.
+     */
     public function procesar_liquidacion_anual() {
         if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Acceso denegado: No tienes permisos de Tesorero.');
         
@@ -1110,6 +1164,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // --- FUNCIÓN PUENTE PARA DEBUG TOOLS (AGREGAR AL FINAL DE LA CLASE) ---
+    /**
+     * Calcula la utilidad del mes actual sumando intereses y multas menos gastos.
+     */
     public function calcular_utilidad_mes_actual() {
         // Para efectos de PRUEBAS y DEBUG, calculamos el mes ACTUAL.
         // La automatización real usa 'verificar_cierre_automatico' que sí mira el mes anterior.
@@ -1126,6 +1183,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // Reemplaza la lógica inmediata por la lógica programada
+    /**
+     * Programa o aplica un cambio en el número de acciones de un socio.
+     */
     public function procesar_actualizacion_acciones() {
         if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
         check_admin_referer('lud_update_shares', 'security');
@@ -1151,6 +1211,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // Nueva función para cancelar si te equivocaste antes de que llegue el día 1
+    /**
+     * Cancela una programación de cambio de acciones para un socio.
+     */
     public function procesar_cancelacion_acciones() {
         if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
         check_admin_referer('lud_cancel_shares', 'security');
@@ -1162,6 +1225,9 @@ class LUD_Admin_Tesoreria {
         exit;
     }
 
+    /**
+     * Muestra el editor de ficha del socio dentro de tesorería.
+     */
     private function render_editor_socio() {
         if ( !isset($_GET['id']) ) return;
         $user_id = intval($_GET['id']);
@@ -1291,6 +1357,9 @@ class LUD_Admin_Tesoreria {
     }
 
     // --- PROCESAMIENTO DEL EDITOR ---
+    /**
+     * Guarda los cambios hechos en la ficha del socio desde el panel.
+     */
     public function procesar_edicion_socio() {
         if ( ! current_user_can('lud_manage_tesoreria') ) wp_die('Sin permisos');
         $user_id = intval($_POST['user_id']);
@@ -1410,6 +1479,9 @@ class LUD_Admin_Tesoreria {
         exit;
     }
 
+    /**
+     * Registra la entrega física de la caja de secretaría.
+     */
     public function procesar_entrega_secretaria() {
         if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Sin permisos');
         check_admin_referer('lud_pay_sec', 'security');
