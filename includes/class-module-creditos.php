@@ -19,7 +19,7 @@ class LUD_Module_Creditos {
         // Dinero Físico (Entradas - Salidas)
         $entradas = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle");
         $gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos");
-        $prestado = $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'pagado', 'mora')");
+        $prestado = $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora')");
         
         // Reservas que NO se pueden prestar (Secretaría)
         // Nota: Multas e Intereses SÍ se prestan durante el año.
@@ -377,7 +377,7 @@ class LUD_Module_Creditos {
         $monto = floatval( $_POST['monto'] );
         $plazo = intval( $_POST['plazo'] );
         $deudor_id = intval( $_POST['deudor_id'] );
-        $firma_base64 = $_POST['signature_data'];
+        $firma_base64 = isset($_POST['signature_data']) ? $_POST['signature_data'] : '';
 
         // 2. REGLA DICIEMBRE
         $mes_actual = date('m');
@@ -421,10 +421,18 @@ class LUD_Module_Creditos {
         if ( ! file_exists( $firmas_dir ) ) mkdir( $firmas_dir, 0755, true );
         $firma_filename = 'solic_' . $user_id . '_' . time() . '.png';
         
-        if ( !empty($firma_base64) ) {
-            $data = explode(',', $firma_base64);
-            file_put_contents($firmas_dir . $firma_filename, base64_decode($data[1]));
+        if ( empty($firma_base64) || strpos($firma_base64, 'data:image/png;base64,') !== 0 ) {
+            wp_die('Error: Firma digital requerida.');
         }
+
+        $data = explode(',', $firma_base64);
+        $decoded_firma = base64_decode($data[1], true);
+
+        if ( $decoded_firma === false ) {
+            wp_die('Error: Firma digital inválida.');
+        }
+
+        file_put_contents($firmas_dir . $firma_filename, $decoded_firma);
 
         // --- NUEVO: CAPTURA DE METADATOS FORENSES ---
         $ip_address = $_SERVER['REMOTE_ADDR'];

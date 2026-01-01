@@ -277,19 +277,34 @@ class LUD_Module_Transacciones {
         $filename_sql = ''; 
         if ( isset($_FILES['comprobante']) && !empty($_FILES['comprobante']['name']) ) {
             $file = $_FILES['comprobante'];
-            $allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
-            
-            if ( ! in_array($file['type'], $allowed_types) ) {
-                wp_redirect( add_query_arg( 'lud_error', 'Formato no permitido. Solo JPG/PNG.', wp_get_referer() ) );
+            $allowed_types = array(
+                'jpg'  => 'image/jpeg',
+                'jpeg' => 'image/jpeg',
+                'png'  => 'image/png',
+                'webp' => 'image/webp',
+            );
+
+            if ( $file['error'] !== UPLOAD_ERR_OK ) {
+                wp_redirect( add_query_arg( 'lud_error', 'Error al subir el comprobante.', wp_get_referer() ) );
+                exit;
+            }
+
+            if ( $file['size'] > 2 * 1024 * 1024 ) {
+                wp_redirect( add_query_arg( 'lud_error', 'El comprobante supera los 2MB permitidos.', wp_get_referer() ) );
+                exit;
+            }
+
+            $filetype = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'], $allowed_types );
+            if ( empty($filetype['ext']) || empty($filetype['type']) || ! array_key_exists( $filetype['ext'], $allowed_types ) ) {
+                wp_redirect( add_query_arg( 'lud_error', 'Formato no permitido. Solo JPG/PNG/WEBP.', wp_get_referer() ) );
                 exit;
             }
             
             $upload_dir = wp_upload_dir();
             $target_dir = $upload_dir['basedir'] . '/fondo_seguro/';
-            if ( ! file_exists( $target_dir ) ) mkdir( $target_dir, 0755, true );
+            if ( ! file_exists( $target_dir ) ) wp_mkdir_p( $target_dir );
             
-            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-            $new_filename = 'pago_' . $user_id . '_' . time() . '.' . $ext;
+            $new_filename = sanitize_file_name( 'pago_' . $user_id . '_' . time() . '.' . $filetype['ext'] );
             $target_path = $target_dir . $new_filename;
             
             if ( move_uploaded_file( $file['tmp_name'], $target_path ) ) {

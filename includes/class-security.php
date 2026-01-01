@@ -10,7 +10,7 @@ class LUD_Security {
 
     public function servir_imagen_segura() {
         // 1. Verificar Permisos (Solo Admin/Tesorero puede ver esto)
-        if ( ! current_user_can( 'manage_options' ) ) {
+        if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'lud_manage_tesoreria' ) && ! current_user_can( 'lud_view_tesoreria' ) ) {
             wp_die( '⛔ Acceso Denegado: Documento Privado.' );
         }
 
