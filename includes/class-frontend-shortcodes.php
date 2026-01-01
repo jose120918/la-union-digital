@@ -395,18 +395,34 @@ class LUD_Frontend_Shortcodes {
         $pdf_filename = '';
         if ( isset($_FILES['archivo_documento']) && !empty($_FILES['archivo_documento']['name']) ) {
             $file = $_FILES['archivo_documento'];
-            if ( $file['type'] != 'application/pdf' ) wp_die('Solo se permiten archivos PDF');
+
+            if ( $file['error'] !== UPLOAD_ERR_OK ) {
+                wp_die('Error al subir el documento de identidad.');
+            }
+
+            if ( $file['size'] > 2 * 1024 * 1024 ) {
+                wp_die('El archivo excede el límite de 2MB.');
+            }
+
+            $filetype = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'], array( 'pdf' => 'application/pdf' ) );
+
+            if ( empty($filetype['ext']) || empty($filetype['type']) || $filetype['ext'] !== 'pdf' ) {
+                wp_die('Solo se permiten archivos PDF válidos.');
+            }
             
             $upload_dir = wp_upload_dir();
             $target_dir = $upload_dir['basedir'] . '/fondo_seguro/documentos/';
-            if ( ! file_exists( $target_dir ) ) mkdir( $target_dir, 0755, true );
+            if ( ! file_exists( $target_dir ) ) wp_mkdir_p( $target_dir );
             
-            $pdf_filename = 'doc_' . $documento . '_' . time() . '.pdf';
-            move_uploaded_file( $file['tmp_name'], $target_dir . $pdf_filename );
+            $pdf_filename = sanitize_file_name( 'doc_' . $documento . '_' . time() . '.' . $filetype['ext'] );
+            if ( ! move_uploaded_file( $file['tmp_name'], $target_dir . $pdf_filename ) ) {
+                wp_die('No se pudo guardar el documento de identidad.');
+            }
         }
 
-        // 2. Crear Usuario WordPress (Login = Cédula, Pass = Cédula temporalmente)
-        $user_id = wp_create_user( $documento, $documento, $email );
+        // 2. Crear Usuario WordPress con contraseña aleatoria
+        $password = wp_generate_password( 20, true, true );
+        $user_id = wp_create_user( $documento, $password, $email );
         if ( is_wp_error($user_id) ) wp_die($user_id->get_error_message());
 
         wp_update_user([
@@ -414,6 +430,7 @@ class LUD_Frontend_Shortcodes {
             'display_name' => sanitize_text_field($_POST['nombre_completo']),
             'role' => 'lud_socio'
         ]);
+        wp_new_user_notification( $user_id, null, 'both' );
 
         // 3. Crear Ficha en DB
         global $wpdb;
