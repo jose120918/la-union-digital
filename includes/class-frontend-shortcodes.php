@@ -1,8 +1,17 @@
 <?php
+/**
+ * Shortcodes de la zona de socios en el frontend.
+ *
+ * Incluye tarjetas de ahorro, historial, perfil de beneficiario y formulario de registro
+ * para nuevos socios del fondo.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class LUD_Frontend_Shortcodes {
 
+    /**
+     * Registra todos los shortcodes disponibles en el frontend.
+     */
     public function __construct() {
         add_shortcode( 'lud_resumen_ahorro', array( $this, 'render_resumen_ahorro' ) );
         add_shortcode( 'lud_historial', array( $this, 'render_historial_movimientos' ) );
@@ -15,6 +24,9 @@ class LUD_Frontend_Shortcodes {
     }
 
     // --- CARD 1: RESUMEN ---
+    /**
+     * Muestra la tarjeta de resumen de ahorro del socio.
+     */
     public function render_resumen_ahorro() {
         if ( ! is_user_logged_in() ) return '<div class="lud-alert">Debes iniciar sesión.</div>';
 
@@ -106,6 +118,9 @@ class LUD_Frontend_Shortcodes {
     }
 
     // --- CARD 2: HISTORIAL DETALLADO ---
+    /**
+     * Renderiza la lista de últimos movimientos del socio.
+     */
     public function render_historial_movimientos() {
         if ( ! is_user_logged_in() ) return '';
 
@@ -168,6 +183,9 @@ class LUD_Frontend_Shortcodes {
     }
 
     // --- CARD 3: PERFIL BENEFICIARIO (CORREGIDO) ---
+    /**
+     * Muestra y permite editar el beneficiario del socio.
+     */
     public function render_perfil_beneficiario() {
         if ( ! is_user_logged_in() ) return '';
 
@@ -237,6 +255,9 @@ class LUD_Frontend_Shortcodes {
         return ob_get_clean();
     }
 
+    /**
+     * Guarda los datos del beneficiario en la tabla financiera.
+     */
     public function procesar_guardado_perfil() {
         if ( ! is_user_logged_in() ) wp_die('No autorizado');
         check_admin_referer( 'lud_perfil_nonce', 'lud_security' );
@@ -280,6 +301,9 @@ class LUD_Frontend_Shortcodes {
     }
 
     // --- FORMULARIO DE REGISTRO NUEVO SOCIO ---
+    /**
+     * Dibuja el formulario de solicitud de ingreso para nuevos socios.
+     */
     public function render_formulario_registro() {
         if ( is_user_logged_in() ) return '<div class="lud-alert success">Ya tienes una sesión activa. No necesitas registrarte de nuevo.</div>';
         
@@ -381,6 +405,9 @@ class LUD_Frontend_Shortcodes {
         return ob_get_clean();
     }
 
+    /**
+     * Procesa la inscripción de un nuevo socio y crea su usuario en WordPress.
+     */
     public function procesar_registro_nuevo() {
         if ( ! isset( $_POST['lud_security'] ) || ! wp_verify_nonce( $_POST['lud_security'], 'lud_registro_nonce' ) ) wp_die('Seguridad');
 

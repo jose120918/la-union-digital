@@ -1,8 +1,17 @@
 <?php
+/**
+ * Instalador de las tablas principales del plugin.
+ *
+ * Este archivo crea todas las tablas necesarias para almacenar cuentas, créditos,
+ * transacciones y utilidades del Fondo La Unión. Se ejecuta en la activación del plugin.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class LUD_DB_Installer {
 
+    /**
+     * Crea o actualiza las tablas personalizadas usando dbDelta.
+     */
     public static function install() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();

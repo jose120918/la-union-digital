@@ -1,8 +1,17 @@
 <?php
+/**
+ * Módulo de créditos: simulador, solicitudes y flujos de aprobación.
+ *
+ * Administra la lógica de préstamos corrientes y ágiles, incluidas validaciones
+ * de liquidez, sanciones y firmas digitales tanto del solicitante como del deudor solidario.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class LUD_Module_Creditos {
 
+    /**
+     * Registra shortcodes y acciones para solicitudes y aprobaciones.
+     */
     public function __construct() {
         add_shortcode( 'lud_simulador_credito', array( $this, 'render_simulador' ) );
         add_action( 'admin_post_lud_solicitar_credito', array( $this, 'procesar_solicitud' ) );
@@ -14,6 +23,11 @@ class LUD_Module_Creditos {
 
     // --- 1. HELPERS DE VALIDACIÓN ---
 
+    /**
+     * Calcula la liquidez disponible restando gastos, préstamos activos y reserva de secretaría.
+     *
+     * @return float Monto disponible para nuevos créditos.
+     */
     public static function get_liquidez_disponible() {
         global $wpdb;
         // Dinero Físico (Entradas - Salidas)
@@ -34,6 +48,9 @@ class LUD_Module_Creditos {
     /**
      * Verifica si el usuario tiene sanción por mora en los últimos 3 meses
      * Cumple Estatuto Art 8.2: "El incumplimiento... tendrá una sanción de tres meses"
+     *
+     * @param int $user_id ID del socio.
+     * @return bool True si está sancionado.
      */
     public static function verificar_sancion_mora($user_id) {
         global $wpdb;
@@ -58,6 +75,9 @@ class LUD_Module_Creditos {
     }
 
     // --- 2. SIMULADOR (Frontend Solicitante) ---
+    /**
+     * Renderiza el simulador de crédito para el socio solicitante.
+     */
     public function render_simulador() {
         if ( ! is_user_logged_in() ) return '<p class="lud-alert error">Inicia sesión para simular.</p>';
 
@@ -362,6 +382,9 @@ class LUD_Module_Creditos {
     }
 
     // --- 3. PROCESAR SOLICITUD (BACKEND) ---
+    /**
+     * Valida la solicitud de crédito y la registra en base de datos.
+     */
     public function procesar_solicitud() {
         if ( ! isset( $_POST['lud_security'] ) || ! wp_verify_nonce( $_POST['lud_security'], 'lud_credito_nonce' ) ) wp_die('Seguridad');
         
@@ -472,6 +495,9 @@ class LUD_Module_Creditos {
     }
 
     // --- 4. ZONA DEL DEUDOR (Sin cambios mayores, solo mantenemos la función) ---
+    /**
+     * Muestra la pantalla donde el deudor solidario firma y aprueba.
+     */
     public function render_zona_deudor() {
         if ( ! is_user_logged_in() ) return 'Inicia sesión.';
         if ( ! isset($_GET['cid']) || ! isset($_GET['token']) ) return 'Enlace inválido.';
@@ -532,6 +558,9 @@ class LUD_Module_Creditos {
         return ob_get_clean();
     }
 
+    /**
+     * Guarda la firma del deudor solidario y cambia el estado del crédito.
+     */
     public function procesar_firma_deudor() {
         if ( ! isset( $_POST['lud_security'] ) || ! wp_verify_nonce( $_POST['lud_security'], 'lud_deudor_nonce' ) ) wp_die('Seguridad');
         
@@ -563,6 +592,9 @@ class LUD_Module_Creditos {
 
     // --- HELPERS Y PDF STATIC ---
     
+    /**
+     * Envía correo al deudor solidario con el enlace de aprobación.
+     */
     private function enviar_aviso_deudor($deudor_id, $solicitante_id, $monto, $credito_id, $token) {
         $deudor = get_userdata($deudor_id);
         $solicitante = get_userdata($solicitante_id);
@@ -577,6 +609,9 @@ class LUD_Module_Creditos {
         wp_mail( $deudor->user_email, "Solicitud de Codeudor - Fondo La Unión", $msg, $headers );
     }
 
+    /**
+     * Genera el contrato PDF final de un crédito aprobado.
+     */
     public static function generar_pdf_final_static($credito_row) {
         // Busca TCPDF
         $rutas = [ 

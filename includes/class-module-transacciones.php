@@ -1,8 +1,17 @@
 <?php
+/**
+ * Módulo de reporte de pagos y control de deuda del socio.
+ *
+ * Provee el formulario público para subir comprobantes y la lógica de validación
+ * y registro de transacciones desde el frontend.
+ */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class LUD_Module_Transacciones {
 
+    /**
+     * Registra los shortcodes y endpoints de procesamiento de pagos.
+     */
     public function __construct() {
         add_shortcode( 'lud_reportar_pago', array( $this, 'render_form_pago' ) );
         add_action( 'admin_post_lud_procesar_pago', array( $this, 'procesar_pago' ) );
@@ -12,6 +21,9 @@ class LUD_Module_Transacciones {
     /**
      * Helper: Calcula la deuda exacta del usuario al día de hoy.
      * Centraliza la lógica para usarla tanto en el formulario (Frontend) como en la validación (Backend).
+     *
+     * @param int $user_id ID del usuario socio.
+     * @return array|false Arreglo con desglose de deudas o false si la cuenta no existe.
      */
     public function calcular_deuda_usuario( $user_id ) {
         global $wpdb;
@@ -97,6 +109,11 @@ class LUD_Module_Transacciones {
         ];
     }
 
+    /**
+     * Dibuja el formulario de reporte de pago en el frontend.
+     *
+     * Incluye sugerencias de monto mínimo y restricciones de captura de comprobante.
+     */
     public function render_form_pago() {
         if ( ! is_user_logged_in() ) return '<p class="lud-alert error">Por favor inicia sesión.</p>';
 
@@ -237,6 +254,9 @@ class LUD_Module_Transacciones {
         return ob_get_clean();
     }
 
+    /**
+     * Procesa el envío del formulario de pago y registra la transacción.
+     */
     public function procesar_pago() {
         if ( ! isset( $_POST['lud_security'] ) || ! wp_verify_nonce( $_POST['lud_security'], 'lud_pago_nonce' ) ) wp_die('Seguridad');
         if ( ! is_user_logged_in() ) wp_die('Login requerido');
