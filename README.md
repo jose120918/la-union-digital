@@ -1,0 +1,128 @@
+# Sistema La Unión Digital
+
+Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centraliza el registro de socios, sus aportes, créditos, recaudos, utilidades y la tesorería operativa. Este README cubre todo el código actual y sirve como guía ejecutiva y técnica.
+
+## Visión general
+- **Qué hace:** habilita a la organización para registrar socios, cobrar aportes obligatorios, recibir comprobantes de pago desde el frontend, gestionar solicitudes de crédito (con firma digital de solicitante y deudor solidario), y operar tesorería con controles de liquidez, desembolsos y cierres.
+- **Dónde corre:** como plugin de WordPress. Usa la base de datos existente (`$wpdb`) y shortcodes para el frontend. Los activos estáticos viven en `assets/` y el núcleo en `la-union-core.php`.
+- **Roles:**
+  - `lud_socio`: acceso básico a shortcodes de autoservicio (pagos, simulador, historial, perfil, registro).
+  - `lud_secretaria`: solo lectura de tesorería (`lud_view_tesoreria`).
+  - `lud_tesorero`: controla operaciones (`lud_manage_tesoreria`, subir archivos).
+  - `lud_presidente`: supervisa y gestiona (`lud_manage_tesoreria`).
+  - `administrator`: recibe capacidades de tesorería automáticamente.
+
+## Estructura del plugin
+- `la-union-core.php`: declara constantes de ruta, carga clases, registra hooks globales y crea roles.
+- `includes/class-db-installer.php`: instala tablas personalizadas con `dbDelta` en la activación.
+- `includes/class-security.php`: endpoint seguro para servir comprobantes almacenados en carpeta protegida.
+- `includes/class-module-transacciones.php`: formulario y lógica de reporte de pagos desde el frontend.
+- `includes/class-module-creditos.php`: simulador, solicitud y flujo de aprobación de créditos (solicitante + deudor).
+- `includes/class-frontend-shortcodes.php`: shortcodes de autoservicio (resumen, historial, beneficiario, registro de socio).
+- `includes/class-admin-tesoreria.php`: panel administrativo (dashboard, desembolsos, cierres, cambios de acciones, gestión de socios).
+- `includes/class-debug-tools.php`: utilidades de depuración (solo roles con privilegios altos).
+- `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
+
+## Instalación y activación
+1. Copiar el directorio del plugin a `wp-content/plugins/sistema-la-union-digital/`.
+2. Activar desde el administrador de WordPress. Durante la activación se crean las tablas personalizadas y los roles con capacidades.
+3. Asegurar que la carpeta de uploads permita crear subdirectorios (`fondo_seguro/`, `fondo_seguro/firmas/`, `fondo_seguro/documentos/`, `fondo_seguro/contratos/`).
+
+## Tablas personalizadas
+Creación gestionada por `LUD_DB_Installer`:
+- `fondo_cuentas`: ficha financiera de cada socio, datos personales, beneficiario, estado y banderas como `permite_galeria` para comprobantes.
+- `fondo_transacciones`: pagos reportados (aporte, cuota, multa, gasto, etc.) con estados y comprobantes.
+- `fondo_creditos`: solicitudes y créditos activos con tipo (corriente/ágil), montos, plazos, firmas, tracking, estado y metadatos forenses (IP, user agent).
+- `fondo_amortizacion`: tabla de cuotas programadas y pagadas por crédito.
+- `fondo_gastos`: gastos operativos de la tesorería.
+- `fondo_recaudos_detalle`: desglose de recaudos por concepto (ahorro, multa, intereses, capital, etc.).
+- `fondo_utilidades_mensuales`: utilidades asignadas y liquidadas a cada socio por mes/año.
+
+## Shortcodes disponibles (frontend)
+- `[lud_reportar_pago]` (`LUD_Module_Transacciones::render_form_pago`):
+  - Calcula deuda administrativa y de créditos para sugerir monto mínimo.
+  - Obliga captura con cámara salvo que `permite_galeria` sea 1.
+  - Valida máximo pagable (evita ahorro voluntario) y sube comprobante seguro a `uploads/fondo_seguro/`.
+  - Registra transacción en estado pendiente.
+- `[lud_simulador_credito]` (`LUD_Module_Creditos::render_simulador`):
+  - Verifica sanciones por mora (90 días), liquidez disponible y regla del 70% para refinanciación.
+  - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%).
+  - Solicita firma digital del socio y deudor solidario (canvas) y genera tokens de seguimiento.
+- `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
+- `[lud_resumen_ahorro]`: tarjeta de ahorro con estado “Al día/Pendiente”, deudas calculadas y rendimientos anuales.
+- `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
+- `[lud_perfil_datos]`: captura y guarda beneficiario (cumplimiento estatutario art. 22).
+- `[lud_registro_socio]`: formulario de ingreso para nuevos socios, incluyendo PDF de identidad y datos KYC.
+
+## Flujo de pagos (frontend a tesorería)
+1. Socio inicia sesión y usa `[lud_reportar_pago]`.
+2. El módulo valida monto máximo según deuda administrativa + créditos y guarda comprobante en zona segura.
+3. Se inserta transacción en `fondo_transacciones` con estado `pendiente` y detalle de preferencia de abono (si excede cuota y tiene crédito).
+4. Tesorería revisa en el dashboard y aprueba/rechaza (ver sección Tesorería).
+
+## Flujo de créditos
+1. Socio abre `[lud_simulador_credito]` y pasa validaciones (sanciones, liquidez, regla 70%).
+2. Ingresa monto, plazo, deudor solidario y firma digital. Se guarda firma en `uploads/fondo_seguro/firmas/` y se registra en `fondo_creditos` como `pendiente_deudor`.
+3. Se envía correo al deudor solidario con token (`codigo_seguimiento`).
+4. Deudor firma en `[lud_zona_deudor]`; el crédito pasa a `pendiente_tesoreria` con fecha de aprobación de deudor.
+5. Tesorería desembolsa, genera contrato PDF (si TCPDF está disponible) con huella forense y avanza estado.
+
+## Panel de Tesorería
+Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):
+- **Dashboard general** (`view=dashboard`): KPIs de caja, intereses, multas, reservas de secretaría, disponibilidad para créditos, y paneles de aprobación.
+- **Desembolsos y cierres:**
+  - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
+  - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
+  - Liquidación anual de utilidades (`admin_post_lud_liquidacion_anual`).
+- **Gestión de socios:**
+  - Buscador y detalle de socio (`view=buscar_socio`, `view=detalle_socio`).
+  - Editor de ficha (`view=editar_socio`) con cambios de acciones, actualización de estado y datos.
+  - Programación de cambios de acciones aplicados automáticamente en `ejecutar_cambios_programados`.
+  - Aprobación o rechazo de registros entrantes (`lud_aprobar_registro`, `lud_rechazar_registro`).
+  - Entregas de secretaría (`lud_entregar_secretaria`) para reflejar salida de caja de ese concepto.
+- **Historial de intereses:** consulta de utilidades liquidadas (`view=historial_intereses`).
+
+## Seguridad y privacidad
+- Bloqueo de acceso directo mediante `ABSPATH` en todos los archivos.
+- Comprobantes y firmas se almacenan en `uploads/fondo_seguro/` y se sirven solo vía `admin_post_lud_ver_comprobante`, validando permisos (`administrator`, `lud_manage_tesoreria`, `lud_view_tesoreria`).
+- Validaciones de nonce en todos los formularios (`wp_verify_nonce` / `check_admin_referer`).
+- Sanitización de entradas (`sanitize_text_field`, `sanitize_email`, `wp_check_filetype_and_ext`, límites de tamaño de archivos) y control de rutas con `realpath`.
+- Reglas de negocio contra fraude: límites de pago (sin ahorro voluntario), obligatoriedad de cámara salvo excepciones, sanciones por mora, regla del 70% para refinanciar, verificación de liquidez antes de aprobar créditos.
+
+## Estilos y activos
+- `assets/css/lud-style.css` contiene el diseño unificado para tarjetas, formularios, badges y listas. Se encola en frontend y admin con las funciones `lud_enqueue_assets` y `lud_admin_enqueue_assets`.
+
+## Endpoints y hooks clave
+- **Activación:** `register_activation_hook` ejecuta `LUD_DB_Installer::install` y `lud_create_roles`.
+- **Shortcodes:** registrados en constructores de `LUD_Module_Transacciones`, `LUD_Module_Creditos` y `LUD_Frontend_Shortcodes`.
+- **Form actions (admin-post.php):**
+  - Pagos: `lud_procesar_pago`, `lud_aprobar_pago`, `lud_rechazar_pago`.
+  - Créditos: `lud_solicitar_credito`, `lud_firmar_deudor`, `lud_aprobar_desembolso`.
+  - Socios/tesorería: `lud_guardar_perfil`, `lud_procesar_registro`, `lud_aprobar_registro`, `lud_rechazar_registro`, `lud_actualizar_acciones`, `lud_cancelar_cambio_acciones`, `lud_guardar_edicion_socio`, `lud_entregar_secretaria`, `lud_liquidacion_anual`.
+  - Seguridad de comprobantes: `lud_ver_comprobante`.
+
+## Recomendaciones de despliegue y operación
+- **Ambiente:** PHP 7.4+ y WordPress actualizado. Asegurar extensión GD para firmas en PNG y disponibilidad de TCPDF si se requieren contratos PDF (`wp-content/librerias_compartidas/tcpdf/`).
+- **Backups:** respaldar base de datos antes de actualizaciones; las tablas personalizadas son críticas para historial financiero.
+- **Permisos de archivos:** verificar que el usuario del servidor web pueda escribir en los subdirectorios de `uploads/fondo_seguro/`.
+- **Correo saliente:** requerido para notificar al deudor solidario; configurar SMTP si el hosting no permite `wp_mail` saliente.
+- **Seguridad operativa:** restringir accesos de tesorería a IPs confiables mediante reglas de hosting si es posible.
+
+## Cómo extender
+- Nuevos conceptos de recaudo: añadir valores en `fondo_recaudos_detalle` y ajustar vistas de tesorería si requieren KPI dedicado.
+- Nuevas validaciones de crédito: extender `LUD_Module_Creditos::verificar_sancion_mora` o agregar verificaciones adicionales antes de `wp_die`/`wp_redirect`.
+- Integración con pasarelas de pago: reutilizar `procesar_pago` para validar montos y registrar transacción, sustituyendo la subida de comprobantes por webhooks.
+
+## Depuración
+- `includes/class-debug-tools.php` expone utilidades adicionales para roles con privilegios altos (p.ej., limpiar data de prueba, revisar tablas). Activar solo en entornos controlados.
+- Revisar errores en `wp-content/debug.log` si `WP_DEBUG_LOG` está habilitado.
+
+## Glosario rápido de rutas
+- Núcleo: `la-union-core.php`
+- Lógica de BD: `includes/class-db-installer.php`
+- Seguridad de archivos: `includes/class-security.php`
+- Pagos frontend: `includes/class-module-transacciones.php`
+- Créditos frontend: `includes/class-module-creditos.php`
+- Shortcodes de socios: `includes/class-frontend-shortcodes.php`
+- Tesorería admin: `includes/class-admin-tesoreria.php`
+- Estilos: `assets/css/lud-style.css`
