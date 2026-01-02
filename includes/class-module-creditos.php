@@ -19,6 +19,10 @@ class LUD_Module_Creditos {
         // Hooks para el Deudor Solidario
         add_shortcode( 'lud_zona_deudor', array( $this, 'render_zona_deudor' ) );
         add_action( 'admin_post_lud_firmar_deudor', array( $this, 'procesar_firma_deudor' ) );
+
+        // Ajustes de esquema y cola de liquidez
+        $this->asegurar_estado_fila_liquidez();
+        add_action( 'init', array( $this, 'liberar_fila_por_liquidez' ) );
     }
 
     // --- 1. HELPERS DE VALIDACIÓN ---
@@ -95,13 +99,10 @@ class LUD_Module_Creditos {
 
         // B. Validar Liquidez del Fondo
         $liquidez = self::get_liquidez_disponible();
-        if ( $liquidez < 100000 ) {
-            return '<div class="lud-card" style="text-align:center;">
-                        <h3>⏳ Solicitudes Pausadas</h3>
-                        <p>En este momento el Fondo no cuenta con liquidez suficiente para nuevos desembolsos.</p>
-                        <div class="lud-badge pendiente" style="font-size:1rem;">Disponible: $ '.number_format($liquidez).'</div>
-                    </div>';
-        }
+        // Bandera para notificar que se aceptan solicitudes pero quedarán en cola por liquidez baja
+        $en_modo_fila = ( $liquidez < 100000 );
+
+        $creditos_en_fila = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_creditos WHERE estado = 'fila_liquidez'" ) );
         
         // C. Obtener Datos del Socio
         $cuenta = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id ) );
@@ -181,6 +182,19 @@ class LUD_Module_Creditos {
             <div class="lud-header">
                 <h3>Simulador de Crédito</h3>
             </div>
+            <?php if ( $en_modo_fila ): ?>
+                <div class="lud-alert success" style="align-items:flex-start;">
+                    <span style="font-size:1.3rem;" aria-hidden="true">⏳</span>
+                    <div>
+                        <div style="font-weight:700;">Solicitudes en fila por liquidez</div>
+                        <div style="font-size:0.9rem; color:#1b5e20;">Tu solicitud se registrará y quedará en cola. Se enviará a Tesorería en el mismo orden cuando exista liquidez.</div>
+                        <div class="lud-badge pendiente" style="margin-top:8px; font-size:0.8rem;">Disponible: $ <?php echo number_format($liquidez, 0, ',', '.'); ?></div>
+                        <?php if ( $creditos_en_fila > 0 ): ?>
+                            <div style="font-size:0.8rem; color:#33691e; margin-top:6px;">Solicitudes en espera: <?php echo $creditos_en_fila; ?></div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
             <?php echo $msg; ?>
             <?php echo $msg_refinanciacion; ?>
 
@@ -405,12 +419,16 @@ class LUD_Module_Creditos {
         // 2. REGLA DICIEMBRE
         $mes_actual = date('m');
         $aviso_diciembre = "";
+        $liquidez = self::get_liquidez_disponible();
         if ( $mes_actual == '12' ) {
             $aviso_diciembre = " [Solicitud Diciembre: Desembolso Enero]";
-        } else {
-            // Validar Liquidez si no es Diciembre
-            $liquidez = self::get_liquidez_disponible();
-            if ( $monto > $liquidez ) wp_die("Error: Fondos insuficientes para este monto.");
+        }
+
+        $en_fila_liquidez = false;
+        if ( $mes_actual != '12' && $monto > $liquidez ) {
+            // Si no hay liquidez suficiente, la solicitud entra en fila pero no se rechaza
+            $en_fila_liquidez = true;
+            $aviso_diciembre .= " [FILA_LIQUIDEZ: Disponible $".number_format($liquidez, 0, ',', '.')."]";
         }
 
         // 3. REGLA DEL 70% (Server-Side)
@@ -480,7 +498,7 @@ class LUD_Module_Creditos {
                 'user_agent' => $user_agent,
 
                 'estado' => 'pendiente_deudor',
-                'datos_entrega' => $aviso_diciembre 
+                'datos_entrega' => trim($aviso_diciembre) 
             ),
             // Nota: Se agregaron dos '%s' al final del array de formatos
             array( '%d', '%s', '%f', '%s', '%d', '%f', '%f', '%d', '%s', '%s', '%s', '%s' ) 
@@ -567,7 +585,12 @@ class LUD_Module_Creditos {
         global $wpdb;
         $credito_id = intval($_POST['credito_id']);
         $firma_base64 = $_POST['firma_deudor_data'];
-        
+
+        $credito = $wpdb->get_row( $wpdb->prepare("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE id = %d", $credito_id) );
+        if ( ! $credito ) {
+            wp_die('Crédito no encontrado');
+        }
+
         if ( empty($firma_base64) ) wp_die('Firma requerida');
 
         $upload_dir = wp_upload_dir();
@@ -577,17 +600,79 @@ class LUD_Module_Creditos {
         $data = explode(',', $firma_base64);
         file_put_contents($firmas_dir . $firma_filename, base64_decode($data[1]));
 
+        // Detectar si la solicitud debe ir a la cola por falta de liquidez al momento del envío
+        $flag_fila_liquidez = ( strpos( $credito->datos_entrega, '[FILA_LIQUIDEZ]' ) !== false );
+        $liquidez = self::get_liquidez_disponible();
+        $estado_destino = ( $flag_fila_liquidez && $credito->monto_solicitado > $liquidez ) ? 'fila_liquidez' : 'pendiente_tesoreria';
+
+        $nota_fila = '';
+        if ( $flag_fila_liquidez ) {
+            if ( $estado_destino === 'fila_liquidez' ) {
+                $nota_fila = " | Fila de liquidez activa desde " . current_time('mysql');
+            } else {
+                $nota_fila = " | Fila liberada por liquidez el " . current_time('mysql');
+            }
+        }
+
         $wpdb->update(
             $wpdb->prefix . 'fondo_creditos',
             array( 
-                'estado' => 'pendiente_tesoreria', 
+                'estado' => $estado_destino, 
                 'firma_deudor' => $firma_filename,
-                'fecha_aprobacion_deudor' => current_time('mysql')
+                'fecha_aprobacion_deudor' => current_time('mysql'),
+                'datos_entrega' => trim( $credito->datos_entrega . $nota_fila )
             ),
             array( 'id' => $credito_id )
         );
 
+        // Intentar liberar otras solicitudes en fila si la liquidez lo permite
+        $this->liberar_fila_por_liquidez();
+
         wp_die('<div style="text-align:center; padding:50px; font-family:sans-serif;"><h1>✅ ¡Gracias!</h1><p>Has aprobado la solicitud. Ahora pasará a Tesorería para su desembolso.</p><a href="javascript:window.close();">Cerrar ventana</a></div>');
+    }
+
+    /**
+     * Ajusta el ENUM de estado para admitir la cola de liquidez.
+     */
+    private function asegurar_estado_fila_liquidez() {
+        global $wpdb;
+        $tabla = "{$wpdb->prefix}fondo_creditos";
+        $columna_estado = $wpdb->get_row( $wpdb->prepare( "SHOW COLUMNS FROM $tabla LIKE %s", 'estado' ) );
+        if ( $columna_estado && strpos( $columna_estado->Type, 'fila_liquidez' ) !== false ) {
+            return;
+        }
+        $wpdb->query(
+            "ALTER TABLE $tabla MODIFY estado ENUM('pendiente_deudor','pendiente_tesoreria','fila_liquidez','activo','rechazado','pagado','mora') DEFAULT 'pendiente_deudor'"
+        );
+    }
+
+    /**
+     * Libera solicitudes en fila cuando la liquidez permite radicarlas.
+     */
+    public function liberar_fila_por_liquidez() {
+        global $wpdb;
+        $creditos_fila = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE estado = 'fila_liquidez' AND firma_deudor IS NOT NULL ORDER BY fecha_solicitud ASC" );
+        if ( empty( $creditos_fila ) ) {
+            return;
+        }
+
+        $liquidez_disponible = self::get_liquidez_disponible();
+        foreach ( $creditos_fila as $credito_fila ) {
+            if ( $credito_fila->monto_solicitado <= $liquidez_disponible ) {
+                $liquidez_disponible -= $credito_fila->monto_solicitado;
+                $nota_actualizada = trim( $credito_fila->datos_entrega . " | Fila liberada por liquidez el " . current_time('mysql') );
+
+                // Se promueve la solicitud a Tesorería respetando el orden de llegada y el cupo actualizado
+                $wpdb->update(
+                    $wpdb->prefix . 'fondo_creditos',
+                    array(
+                        'estado' => 'pendiente_tesoreria',
+                        'datos_entrega' => $nota_actualizada
+                    ),
+                    array( 'id' => $credito_fila->id )
+                );
+            }
+        }
     }
 
     // --- HELPERS Y PDF STATIC ---

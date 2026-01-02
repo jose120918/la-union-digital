@@ -181,7 +181,13 @@ class LUD_Module_Transacciones {
                 <div style='font-size:0.85rem;'>$breakdown</div>
             </div>";
         } else {
-            $sugerencia_html = "<div class='lud-success-box'>✅ <strong>Estás al día.</strong> Solo realiza pagos si deseas adelantar cuota o abonar a tu crédito.</div>";
+            $sugerencia_html = "<div class='lud-success-box lud-success-compacta'>"
+                             . "<span class='lud-icono-estado' aria-hidden='true'>✅</span>"
+                             . "<div>"
+                             . "<div class='lud-success-titulo'>Estado al día</div>"
+                             . "<div class='lud-success-texto'>Puedes adelantar tu próxima cuota o abonar capital a tu crédito cuando quieras.</div>"
+                             . "</div>"
+                             . "</div>";
         }
 
         $msg = '';
