@@ -155,6 +155,19 @@ class LUD_DB_Installer {
             KEY user_mes (user_id, mes, anio)
         ) $charset_collate;";
 
+        // 8. Retiros voluntarios
+        $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_retiros (
+            id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id BIGINT(20) UNSIGNED NOT NULL,
+            monto_estimado DECIMAL(15,2) NOT NULL DEFAULT 0,
+            detalle TEXT NULL,
+            estado ENUM('pendiente','aprobado','rechazado','pagado') DEFAULT 'pendiente',
+            fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
+            fecha_respuesta DATETIME NULL,
+            usuario_respuesta BIGINT(20) UNSIGNED NULL,
+            KEY user_id (user_id)
+        ) $charset_collate;";
+
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
         foreach ( $sql as $query ) {
             dbDelta( $query );
