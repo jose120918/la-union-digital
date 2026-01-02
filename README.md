@@ -18,8 +18,9 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `includes/class-security.php`: endpoint seguro para servir comprobantes almacenados en carpeta protegida.
 - `includes/class-module-transacciones.php`: formulario y lógica de reporte de pagos desde el frontend.
 - `includes/class-module-creditos.php`: simulador, solicitud y flujo de aprobación de créditos (solicitante + deudor).
-- `includes/class-frontend-shortcodes.php`: shortcodes de autoservicio (resumen, historial, beneficiario, registro de socio).
-- `includes/class-admin-tesoreria.php`: panel administrativo (dashboard, desembolsos, cierres, cambios de acciones, gestión de socios).
+- `includes/class-module-retiros.php`: solicitudes de retiro voluntario (paz y salvo obligatorio) y cálculo del monto estimado a devolver.
+- `includes/class-frontend-shortcodes.php`: shortcodes de autoservicio (resumen, historial, beneficiario, registro de socio, retiro).
+- `includes/class-admin-tesoreria.php`: panel administrativo (dashboard, desembolsos, cierres, cambios de acciones, gestión de socios, retiros).
 - `includes/class-debug-tools.php`: utilidades de depuración (solo roles con privilegios altos).
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
@@ -37,6 +38,7 @@ Creación gestionada por `LUD_DB_Installer`:
 - `fondo_gastos`: gastos operativos de la tesorería.
 - `fondo_recaudos_detalle`: desglose de recaudos por concepto (ahorro, multa, intereses, capital, etc.).
 - `fondo_utilidades_mensuales`: utilidades asignadas y liquidadas a cada socio por mes/año.
+- `fondo_retiros`: solicitudes de retiro voluntario con estado, monto estimado, usuario que responde, fecha y motivo de respuesta.
 
 ## Shortcodes disponibles (frontend)
 - `[lud_reportar_pago]` (`LUD_Module_Transacciones::render_form_pago`):
@@ -53,6 +55,10 @@ Creación gestionada por `LUD_DB_Installer`:
 - `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
 - `[lud_perfil_datos]`: captura y guarda beneficiario (cumplimiento estatutario art. 22).
 - `[lud_registro_socio]`: formulario de ingreso para nuevos socios, incluyendo PDF de identidad y datos KYC.
+- `[lud_retiro_voluntario]` (`LUD_Module_Retiros::render_formulario_retiro`):
+  - Solo permite solicitar retiro si el socio está paz y salvo (sin deudas administrativas ni créditos activos).
+  - Calcula el monto estimado a devolver (ahorro + rendimientos asignados) y registra la solicitud como `pendiente`.
+  - Bloquea solicitudes duplicadas y exige aceptar las condiciones de reingreso (2 meses después del retiro).
 
 ## Flujo de pagos (frontend a tesorería)
 1. Socio inicia sesión y usa `[lud_reportar_pago]`.
@@ -74,6 +80,9 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
   - Liquidación anual de utilidades (`admin_post_lud_liquidacion_anual`).
+- **Retiros voluntarios:**
+  - Card de “📤 Solicitudes de Retiro” en el dashboard que lista retiros `pendiente`.
+  - Botón para aprobar y agendar la entrega; botón para rechazar obligando a escribir el motivo (registrado en BD).
 - **Gestión de socios:**
   - Buscador y detalle de socio (`view=buscar_socio`, `view=detalle_socio`).
   - Editor de ficha (`view=editar_socio`) con cambios de acciones, actualización de estado y datos.
