@@ -125,6 +125,15 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 ## Depuración
 - `includes/class-debug-tools.php` expone utilidades adicionales para roles con privilegios altos (p.ej., limpiar data de prueba, revisar tablas). Activar solo en entornos controlados.
 - Revisar errores en `wp-content/debug.log` si `WP_DEBUG_LOG` está habilitado.
+- La suite de pruebas interna (`LUD_Debug_Tools`) incluye un caso que valida el flujo de retiro voluntario: paz y salvo previo, registro único pendiente y aprobación con motivo.
+
+## Pruebas recomendadas (módulo de retiros)
+- **Solicitud exitosa (paz y salvo):** iniciar sesión como socio sin deudas ni créditos, abrir `[lud_retiro_voluntario]`, verificar que muestra el monto estimado y enviar; confirmar que queda en `fondo_retiros` como `pendiente`.
+- **Bloqueo por deuda:** simular socio con deuda o crédito activo; abrir el shortcode y validar que se bloquea con mensaje de pago pendiente.
+- **Duplicado bloqueado:** con una solicitud `pendiente`, intentar enviar otra y comprobar que se muestra el aviso de solicitud en revisión.
+- **Aprobación en Tesorería:** en el dashboard, card “📤 Solicitudes de Retiro”, aprobar y confirmar que el estado cambia a `aprobado` con fecha y usuario que respondió.
+- **Rechazo con motivo obligatorio:** rechazar desde la misma card ingresando un motivo; validar que el estado queda `rechazado` y se guarda el texto en `motivo_respuesta`.
+- **Persistencia de esquema:** tras actualización, confirmar que la tabla `fondo_retiros` contiene la columna `motivo_respuesta` (ejecutar `DESCRIBE wp_fondo_retiros;` en la BD).
 
 ## Glosario rápido de rutas
 - Núcleo: `la-union-core.php`
