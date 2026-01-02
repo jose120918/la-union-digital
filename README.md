@@ -48,7 +48,8 @@ Creación gestionada por `LUD_DB_Installer`:
   - Registra transacción en estado pendiente.
 - `[lud_simulador_credito]` (`LUD_Module_Creditos::render_simulador`):
   - Verifica sanciones por mora (90 días), liquidez disponible y regla del 70% para refinanciación.
-  - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%).
+  - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%), mostrando interés total del crédito y cuota mensual.
+  - Bloquea solicitudes de crédito corriente cuya cuota resultante sea menor a $50.000 (alerta visual y validación backend, conforme estatutos).
   - Solicita firma digital del socio y deudor solidario (canvas) y genera tokens de seguimiento.
   - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
@@ -95,6 +96,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Configuración del fondo (solo administradores):** pestaña “⚙️ Configuración del Fondo” con dos bloques:
   - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
+- **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
 
 ## Notificaciones automáticas y correos
 - Motor centralizado en `LUD_Notificaciones` con plantilla HTML unificada (saludo obligatorio con nombre + tipo/número de identificación).

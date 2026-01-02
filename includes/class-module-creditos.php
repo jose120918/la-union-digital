@@ -247,7 +247,9 @@ class LUD_Module_Creditos {
                 <div class="lud-sim-result">
                     <div class="lud-sim-row"><span>Cuota Capital:</span><span id="sim_capital">$0</span></div>
                     <div class="lud-sim-row"><span>Interés Mensual (<span id="sim_tasa">2%</span>):</span><span id="sim_interes">$0</span></div>
+                    <div class="lud-sim-row"><span>Interés total del crédito:</span><span id="sim_interes_total">$0</span></div>
                     <div class="lud-sim-total"><span>Cuota Mensual Aprox:</span><span id="sim_total">$0</span></div>
+                    <small style="display:block; color:#777; margin-top:6px;">El interés total es la suma de los intereses mensuales a lo largo del plazo.</small>
                     
                     <div id="bloque_cruce" style="display:none; margin-top:15px; border-top:1px solid #c8e6c9; padding-top:10px;">
                         <div class="lud-sim-row" style="color:#c62828;"><span>(-) Saldo Crédito Anterior:</span><span>- $<?php echo number_format($saldo_pendiente); ?></span></div>
@@ -255,6 +257,7 @@ class LUD_Module_Creditos {
                     </div>
                     
                     <div id="sim_warning" style="display:none; color:#c62828; font-size:0.8rem; margin-top:10px; background:#ffebee; padding:5px;">⚠️ Error: El monto debe cubrir al menos la deuda anterior.</div>
+                    <div id="sim_cuota_min" class="lud-alert error lud-alert-compacta" style="display:none; margin-top:10px;">⚠️ La cuota mensual no puede ser menor a $50.000 según estatutos.</div>
                 </div>
 
                 <div class="lud-form-group" id="bloque_codeudor">
@@ -345,15 +348,18 @@ class LUD_Module_Creditos {
                 const capitalMensual = monto / plazo;
                 const interesMensual = monto * tasa;
                 const cuotaTotal = capitalMensual + interesMensual;
+                const interesTotal = interesMensual * plazo;
 
                 document.getElementById('sim_capital').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(capitalMensual));
                 document.getElementById('sim_interes').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(interesMensual));
+                document.getElementById('sim_interes_total').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(interesTotal));
                 document.getElementById('sim_total').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(cuotaTotal));
 
                 // Validación Refinanciación
                 let valido = true;
                 let maximo = (tipoActual === 'corriente') ? maxCorriente : maxAgil;
                 const firma = document.getElementById('signature_data').value;
+                const alertaCuota = document.getElementById('sim_cuota_min');
 
                 if (esRefinanciacion) {
                     document.getElementById('bloque_cruce').style.display = 'block';
@@ -369,6 +375,14 @@ class LUD_Module_Creditos {
                     }
                 } else {
                     document.getElementById('bloque_cruce').style.display = 'none';
+                }
+
+                // Regla de cuota mínima: ninguna cuota mensual puede ser menor a $50.000 según estatutos.
+                if (tipoActual === 'corriente' && cuotaTotal < 50000) {
+                    valido = false;
+                    alertaCuota.style.display = 'block';
+                } else {
+                    alertaCuota.style.display = 'none';
                 }
 
                 if (monto > maximo || monto <= 0 || !firma) valido = false;
@@ -453,6 +467,11 @@ class LUD_Module_Creditos {
         
         // Round final para guardar en la BD como referencia limpia
         $cuota = round($capital_mes + $interes_mes, 2);
+
+        // Regla estatutaria: la cuota mensual no puede ser inferior a $50.000
+        if ( $tipo === 'corriente' && $cuota < 50000 ) {
+            wp_die( '<div style="padding:30px; font-family:sans-serif; color:#b71c1c;"><h2>⚠️ Solicitud no válida</h2><p>La cuota mensual resultante es inferior a $50.000. Ajusta monto o plazo según los estatutos.</p></div>' );
+        }
         
         $codigo_unico = strtoupper( uniqid('CRED-') );
 
