@@ -102,7 +102,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 
 ## Estilos y activos
 - `assets/css/lud-style.css` contiene el diseño unificado para tarjetas, formularios, badges y listas. Se encola en frontend y admin con las funciones `lud_enqueue_assets` y `lud_admin_enqueue_assets`.
-- Contiene estilos mejorados para selects y checkboxes modernos, banners compactos de estado y ayuda visual (ej. estado al día en pagos o retiros voluntarios).
+- Contiene estilos mejorados para selects y checkboxes modernos con `!important` (evita que Elementor/tema los sobreescriba), y banners compactos de estado con tipografía reducida y mensajes menos invasivos en pagos o retiros voluntarios.
 
 ## Endpoints y hooks clave
 - **Activación:** `register_activation_hook` ejecuta `LUD_DB_Installer::install` y `lud_create_roles`.

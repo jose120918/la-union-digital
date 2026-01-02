@@ -183,7 +183,7 @@ class LUD_Module_Creditos {
                 <h3>Simulador de Crédito</h3>
             </div>
             <?php if ( $en_modo_fila ): ?>
-                <div class="lud-alert success" style="align-items:flex-start;">
+                <div class="lud-alert success lud-alert-compacta" style="align-items:flex-start;">
                     <span style="font-size:1.3rem;" aria-hidden="true">⏳</span>
                     <div>
                         <div style="font-weight:700;">Solicitudes en fila por liquidez</div>
