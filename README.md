@@ -50,6 +50,7 @@ Creación gestionada por `LUD_DB_Installer`:
   - Verifica sanciones por mora (90 días), liquidez disponible y regla del 70% para refinanciación.
   - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%).
   - Solicita firma digital del socio y deudor solidario (canvas) y genera tokens de seguimiento.
+  - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
 - `[lud_resumen_ahorro]`: tarjeta de ahorro con estado “Al día/Pendiente”, deudas calculadas y rendimientos anuales.
 - `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
@@ -71,7 +72,8 @@ Creación gestionada por `LUD_DB_Installer`:
 2. Ingresa monto, plazo, deudor solidario y firma digital. Se guarda firma en `uploads/fondo_seguro/firmas/` y se registra en `fondo_creditos` como `pendiente_deudor`.
 3. Se envía correo al deudor solidario con token (`codigo_seguimiento`).
 4. Deudor firma en `[lud_zona_deudor]`; el crédito pasa a `pendiente_tesoreria` con fecha de aprobación de deudor.
-5. Tesorería desembolsa, genera contrato PDF (si TCPDF está disponible) con huella forense y avanza estado.
+5. Si en el paso 1 no había liquidez suficiente, la solicitud queda en `fila_liquidez` y se promueve automáticamente a `pendiente_tesoreria` en cuanto el cupo del fondo lo permite, respetando el orden de solicitud.
+6. Tesorería desembolsa, genera contrato PDF (si TCPDF está disponible) con huella forense y avanza estado.
 
 ## Panel de Tesorería
 Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):
@@ -100,6 +102,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 
 ## Estilos y activos
 - `assets/css/lud-style.css` contiene el diseño unificado para tarjetas, formularios, badges y listas. Se encola en frontend y admin con las funciones `lud_enqueue_assets` y `lud_admin_enqueue_assets`.
+- Contiene estilos mejorados para selects y checkboxes modernos, banners compactos de estado y ayuda visual (ej. estado al día en pagos o retiros voluntarios).
 
 ## Endpoints y hooks clave
 - **Activación:** `register_activation_hook` ejecuta `LUD_DB_Installer::install` y `lud_create_roles`.
