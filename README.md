@@ -97,6 +97,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
 - **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
+- **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado) y “Limpiar Datos de Prueba” (elimina únicamente esos usuarios y sus tablas relacionadas).
 
 ## Notificaciones automáticas y correos
 - Motor centralizado en `LUD_Notificaciones` con plantilla HTML unificada (saludo obligatorio con nombre + tipo/número de identificación).
