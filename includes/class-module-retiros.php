@@ -102,8 +102,12 @@ class LUD_Module_Retiros {
 
             <?php echo $mensaje_estado; ?>
 
-            <div class="lud-success-box" style="margin-bottom:15px;">
-                ✅ Se te entregará el total ahorrado más los intereses generados, en la siguiente reunión siempre que exista liquidez (Art. 14 y disposiciones finales).
+            <div class="lud-success-box lud-success-compacta" style="margin-bottom:15px;">
+                <span class="lud-icono-estado" aria-hidden="true">💡</span>
+                <div>
+                    <div class="lud-success-titulo">Entrega en reunión con liquidez</div>
+                    <div class="lud-success-texto">Se devolverá el ahorro más intereses en la siguiente reunión con disponibilidad (Art. 14 y disposiciones finales).</div>
+                </div>
             </div>
 
             <div class="lud-details-grid" style="margin-bottom:15px;">
@@ -131,9 +135,10 @@ class LUD_Module_Retiros {
                     <textarea name="detalle" class="lud-input" rows="3" placeholder="Ej: Cambio de residencia, necesidad personal..." required></textarea>
                 </div>
 
-                <label style="display:flex; align-items:center; gap:8px; margin:12px 0;">
+                <label class="lud-checkbox-moderno">
                     <input type="checkbox" name="aceptacion_reglamento" value="1" required>
-                    <span>Acepto que podré solicitar reingreso a la asamblea dos meses después del retiro.</span>
+                    <span class="lud-checkbox-caja" aria-hidden="true"></span>
+                    <span class="lud-checkbox-texto">Acepto que podré solicitar reingreso a la asamblea dos meses después del retiro.</span>
                 </label>
 
                 <button type="submit" class="lud-btn">Enviar solicitud</button>
