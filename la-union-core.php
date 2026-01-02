@@ -28,6 +28,7 @@ require_once LUD_PLUGIN_DIR . 'includes/class-module-creditos.php';
 require_once LUD_PLUGIN_DIR . 'includes/class-module-retiros.php';
 require_once LUD_PLUGIN_DIR . 'includes/class-frontend-shortcodes.php';
 require_once LUD_PLUGIN_DIR . 'includes/class-admin-tesoreria.php';
+require_once LUD_PLUGIN_DIR . 'includes/class-notificaciones.php';
 require_once LUD_PLUGIN_DIR . 'includes/class-debug-tools.php';
 
 /**
@@ -41,6 +42,7 @@ function lud_init_plugin() {
     new LUD_Frontend_Shortcodes();
     new LUD_Admin_Tesoreria();
     new LUD_Debug_Tools(); // Solo visible para Admin (update_core)
+    lud_notificaciones(); // Instancia única para gestión de correos
 }
 add_action( 'plugins_loaded', 'lud_init_plugin' );
 

@@ -505,6 +505,14 @@ class LUD_Module_Creditos {
         );
         $credito_id = $wpdb->insert_id;
 
+        // Notificar eventos automáticos.
+        do_action( 'lud_evento_credito_solicitado', $user_id, $credito_id, array(
+            'monto'   => $monto,
+            'tipo'    => $tipo,
+            'plazo'   => $plazo,
+            'en_fila' => $en_fila_liquidez
+        ) );
+
         // Notificar Deudor
         $this->enviar_aviso_deudor($deudor_id, $user_id, $monto, $credito_id, $codigo_unico);
 
@@ -681,17 +689,8 @@ class LUD_Module_Creditos {
      * Envía correo al deudor solidario con el enlace de aprobación.
      */
     private function enviar_aviso_deudor($deudor_id, $solicitante_id, $monto, $credito_id, $token) {
-        $deudor = get_userdata($deudor_id);
-        $solicitante = get_userdata($solicitante_id);
-        $link = home_url('/zona-deudor/') . "?cid=$credito_id&token=$token";
-
-        $msg = "Hola {$deudor->display_name},<br><br>
-        {$solicitante->display_name} te ha postulado como Deudor Solidario para un crédito de $".number_format($monto).".<br>
-        Para revisar y aprobar esta solicitud, ingresa aquí:<br><br>
-        <a href='$link' style='padding:10px 20px; background:#1565c0; color:#fff; text-decoration:none; border-radius:5px;'>Revisar Solicitud</a>";
-        
-        $headers = array('Content-Type: text/html; charset=UTF-8');
-        wp_mail( $deudor->user_email, "Solicitud de Codeudor - Fondo La Unión", $msg, $headers );
+        // Delegamos al motor de notificaciones para aplicar la plantilla unificada.
+        do_action( 'lud_evento_credito_deudor', $deudor_id, $solicitante_id, $monto, $credito_id, $token );
     }
 
     /**
