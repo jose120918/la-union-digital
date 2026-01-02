@@ -165,6 +165,7 @@ class LUD_DB_Installer {
             fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
             fecha_respuesta DATETIME NULL,
             usuario_respuesta BIGINT(20) UNSIGNED NULL,
+            motivo_respuesta TEXT NULL,
             KEY user_id (user_id)
         ) $charset_collate;";
 

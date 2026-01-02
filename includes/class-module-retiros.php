@@ -20,14 +20,11 @@ class LUD_Module_Retiros {
     }
 
     /**
-     * Crea la tabla de retiros si no existe (compatibilidad con instalaciones previas).
+     * Crea o actualiza la tabla de retiros (compatibilidad con instalaciones previas).
      */
     private function crear_tabla_retiros() {
         global $wpdb;
         $tabla = "{$wpdb->prefix}fondo_retiros";
-        $existe = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $tabla ) );
-
-        if ( $existe === $tabla ) return;
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         $charset = $wpdb->get_charset_collate();
@@ -40,10 +37,11 @@ class LUD_Module_Retiros {
             fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
             fecha_respuesta DATETIME NULL,
             usuario_respuesta BIGINT(20) UNSIGNED NULL,
+            motivo_respuesta TEXT NULL,
             PRIMARY KEY (id),
             KEY user_id (user_id)
         ) $charset;";
-        dbDelta( $sql );
+        dbDelta( $sql ); // dbDelta agrega columnas faltantes si la tabla ya existe.
     }
 
     /**
