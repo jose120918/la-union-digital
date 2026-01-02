@@ -206,7 +206,7 @@ class LUD_Debug_Tools {
             $nombre_completo = $nombre . ' ' . $apellido;
             $documento = rand(1000000000, 1999999999);
             $slug = sanitize_title($nombre . '-' . $apellido . '-' . $i);
-            $email = $slug . '@fondo.prototipo.com.co';
+            $email = $slug . '@prototipo.com.co';
 
             $user_id = wp_insert_user(array(
                 'user_login' => $slug,
@@ -1427,6 +1427,7 @@ class LUD_Debug_Tools {
         $wpdb->delete("{$wpdb->prefix}fondo_recaudos_detalle", ['transaccion_id' => $transaccion_prueba]);
         $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['categoria' => 'test_dashboard', 'descripcion' => 'TEST KPIs Dashboard ' . $transaccion_prueba]);
     }
+
 
     // --- HELPER: RESUMEN FINANCIERO EXPRESS ---
     /**
