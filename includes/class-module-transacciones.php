@@ -26,6 +26,22 @@ class LUD_Module_Transacciones {
      * @return array|false Arreglo con desglose de deudas o false si la cuenta no existe.
      */
     public function calcular_deuda_usuario( $user_id ) {
+        return self::calcular_deuda_interna( $user_id );
+    }
+
+    /**
+     * Atajo estático para reutilizar el cálculo de deuda sin instanciar el módulo.
+     * Útil en otros módulos (retiros, tesorería) para cumplir con los estatutos.
+     */
+    public static function calcular_deuda_usuario_estatico( $user_id ) {
+        return self::calcular_deuda_interna( $user_id );
+    }
+
+    /**
+     * Calcula el saldo pendiente de ahorro, secretaría, multas e intereses de créditos.
+     * Esta función centraliza la lógica para evitar duplicación entre validaciones.
+     */
+    private static function calcular_deuda_interna( $user_id ) {
         global $wpdb;
         $cuenta = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id ) );
         

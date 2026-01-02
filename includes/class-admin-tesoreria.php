@@ -28,6 +28,7 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_cancelar_cambio_acciones', array( $this, 'procesar_cancelacion_acciones' ) );
         add_action( 'admin_post_lud_guardar_edicion_socio', array( $this, 'procesar_edicion_socio' ) );
         add_action( 'admin_post_lud_entregar_secretaria', array( $this, 'procesar_entrega_secretaria' ) );
+        add_action( 'admin_post_lud_responder_retiro', array( $this, 'procesar_respuesta_retiro' ) );
     }
 
     /**
@@ -230,6 +231,15 @@ class LUD_Admin_Tesoreria {
         $socios_activos = intval( $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'") );
         $socios_morosos = count($morosos);
 
+        // Solicitudes de retiro (pendientes para decisión)
+        $retiros_pendientes = $wpdb->get_results(
+            "SELECT r.*, u.display_name, u.user_email 
+             FROM {$wpdb->prefix}fondo_retiros r
+             JOIN {$wpdb->users} u ON r.user_id = u.ID
+             WHERE r.estado = 'pendiente'
+             ORDER BY r.fecha_solicitud ASC"
+        );
+
         // 2. CONSULTAS PENDIENTES
         $pendientes = $wpdb->get_results( 
             "SELECT tx.*, u.user_email, u.display_name 
@@ -245,6 +255,14 @@ class LUD_Admin_Tesoreria {
         );
         
         ?>
+        
+        <?php if ( isset( $_GET['lud_msg'] ) ): ?>
+            <?php if ( $_GET['lud_msg'] === 'retiro_aprobado' ): ?>
+                <div class="notice notice-success"><p>✅ Retiro aprobado y agendado para entrega en reunión.</p></div>
+            <?php elseif ( $_GET['lud_msg'] === 'retiro_rechazado' ): ?>
+                <div class="notice notice-error"><p>❌ Solicitud de retiro rechazada y notificada internamente.</p></div>
+            <?php endif; ?>
+        <?php endif; ?>
         
         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px;">
             <div class="lud-card" style="flex:1; min-width:300px; background:#2c3e50; color:#fff; cursor:help;" 
@@ -349,6 +367,59 @@ class LUD_Admin_Tesoreria {
                 ?>
                 <small><?php echo $socios_morosos; ?> con alerta en cartera: <?php echo esc_html($texto_morosos); ?></small>
             </div>
+        </div>
+
+        <div class="lud-card" style="border-left:5px solid #8e44ad; margin-bottom:30px;" title="Ayuda: Aprobar o rechazar retiros voluntarios solicitados por los socios.">
+            <h3>📤 Solicitudes de Retiro</h3>
+            <?php if ( empty( $retiros_pendientes ) ): ?>
+                <p style="color:#27ae60;">✅ No hay retiros pendientes de decisión.</p>
+            <?php else: ?>
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th>Socio</th>
+                            <th>Monto estimado</th>
+                            <th>Motivo socio</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $retiros_pendientes as $r ): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo esc_html( $r->display_name ); ?></strong><br>
+                                <small>Solicitado: <?php echo date_i18n( 'd/M H:i', strtotime( $r->fecha_solicitud ) ); ?></small>
+                            </td>
+                            <td style="color:#2c3e50; font-weight:bold;">
+                                $ <?php echo number_format( $r->monto_estimado, 0, ',', '.' ); ?>
+                            </td>
+                            <td style="max-width:260px;"><?php echo nl2br( esc_html( $r->detalle ) ); ?></td>
+                            <td>
+                                <?php if ( $puede_editar ): ?>
+                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="margin-bottom:8px;">
+                                        <input type="hidden" name="action" value="lud_responder_retiro">
+                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
+                                        <input type="hidden" name="decision" value="aprobado">
+                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
+                                        <button class="button button-primary" style="width:100%;" title="Aprueba el retiro para entregarlo en la próxima reunión con liquidez.">Aprobar</button>
+                                    </form>
+                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
+                                        <input type="hidden" name="action" value="lud_responder_retiro">
+                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
+                                        <input type="hidden" name="decision" value="rechazado">
+                                        <textarea name="motivo" rows="2" style="width:100%; margin-bottom:6px;" placeholder="Motivo de rechazo (obligatorio)" required></textarea>
+                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
+                                        <button class="button button-link-delete" style="width:100%; color:#c0392b;" title="Requiere escribir el motivo para notificar a la asamblea.">Rechazar</button>
+                                    </form>
+                                <?php else: ?>
+                                    <small>Solo lectura.</small>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
 
         <?php if ( !empty($morosos) ): ?>
@@ -1513,6 +1584,47 @@ class LUD_Admin_Tesoreria {
         ]);
 
         wp_redirect( admin_url('admin.php?page=lud-tesoreria&msg=sec_paid') );
+        exit;
+    }
+
+    /**
+     * Procesa la aprobación o rechazo de un retiro voluntario.
+     */
+    public function procesar_respuesta_retiro() {
+        if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die('Sin permisos');
+
+        $retiro_id = intval( $_POST['retiro_id'] );
+        $decision = sanitize_text_field( $_POST['decision'] );
+        $motivo = isset( $_POST['motivo'] ) ? sanitize_textarea_field( $_POST['motivo'] ) : '';
+
+        check_admin_referer( 'lud_responder_retiro_' . $retiro_id, 'security' );
+
+        if ( $decision !== 'aprobado' && $decision !== 'rechazado' ) {
+            wp_die( 'Decisión inválida' );
+        }
+
+        if ( $decision === 'rechazado' && empty( $motivo ) ) {
+            wp_die( 'Debes indicar el motivo de rechazo.' );
+        }
+
+        global $wpdb;
+        $tabla = "{$wpdb->prefix}fondo_retiros";
+
+        $wpdb->update(
+            $tabla,
+            array(
+                'estado'           => $decision,
+                'fecha_respuesta'  => current_time( 'mysql' ),
+                'usuario_respuesta'=> get_current_user_id(),
+                'motivo_respuesta' => $motivo
+            ),
+            array( 'id' => $retiro_id ),
+            array( '%s', '%s', '%d', '%s' ),
+            array( '%d' )
+        );
+
+        $redirect = admin_url( 'admin.php?page=lud-tesoreria&view=dashboard&lud_msg=retiro_' . $decision );
+        wp_redirect( $redirect );
         exit;
     }
 
