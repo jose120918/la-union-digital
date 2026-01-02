@@ -382,6 +382,9 @@ class LUD_Module_Transacciones {
             array( '%d', '%s', '%f', '%s', '%s', '%s', '%s' )
         );
 
+        // Notificar al socio que el pago entró a revisión.
+        do_action( 'lud_evento_pago_reportado', $user_id, $wpdb->insert_id, $monto );
+
         wp_redirect( add_query_arg( 'lud_status', 'success', remove_query_arg( array('lud_status','lud_error'), wp_get_referer() ) ) );
         exit;
     }

@@ -200,6 +200,9 @@ class LUD_Module_Retiros {
             array( '%d', '%f', '%s', '%s', '%s' )
         );
 
+        // Disparar notificación de nueva solicitud de retiro.
+        do_action( 'lud_evento_retiro', $user_id, 'pendiente', $monto_estimado, $detalle );
+
         wp_redirect( add_query_arg( 'lud_status', 'retiro_enviado', remove_query_arg( array( 'lud_error' ), wp_get_referer() ) ) );
         exit;
     }
