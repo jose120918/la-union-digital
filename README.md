@@ -48,7 +48,8 @@ Creación gestionada por `LUD_DB_Installer`:
   - Registra transacción en estado pendiente.
 - `[lud_simulador_credito]` (`LUD_Module_Creditos::render_simulador`):
   - Verifica sanciones por mora (90 días), liquidez disponible y regla del 70% para refinanciación.
-  - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%).
+  - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%), mostrando interés total del crédito y cuota mensual.
+  - Bloquea solicitudes de crédito corriente cuya cuota resultante sea menor a $50.000 (alerta visual y validación backend, conforme estatutos).
   - Solicita firma digital del socio y deudor solidario (canvas) y genera tokens de seguimiento.
   - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
@@ -92,6 +93,25 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - Aprobación o rechazo de registros entrantes (`lud_aprobar_registro`, `lud_rechazar_registro`).
   - Entregas de secretaría (`lud_entregar_secretaria`) para reflejar salida de caja de ese concepto.
 - **Historial de intereses:** consulta de utilidades liquidadas (`view=historial_intereses`).
+- **Configuración del fondo (solo administradores):** pestaña “⚙️ Configuración del Fondo” con dos bloques:
+  - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
+  - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
+- **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
+
+## Notificaciones automáticas y correos
+- Motor centralizado en `LUD_Notificaciones` con plantilla HTML unificada (saludo obligatorio con nombre + tipo/número de identificación).
+- Correos automáticos actuales:
+  - Pago reportado, pago aprobado (con desglose) o pago rechazado (motivo).
+  - Solicitud de crédito radicada, correo al deudor solidario con enlace de firma, desembolso/contrato firmado (adjunto PDF) y actualizaciones de estado.
+  - Actualización de datos (zona de socios o panel administrativo) y recordatorio para actualizarlos cada 6 meses.
+  - Solicitud de retiro voluntario y respuesta (aprobado/rechazado).
+  - Recordatorios diarios de mora (1 correo por día en mora efectiva) con saldo actualizado.
+  - Resumen mensual a Presidencia, Secretaría y Tesorería (día 1: cierre del mes anterior con métricas).
+- La configuración editable vive en la pestaña “⚙️ Configuración del Fondo” del administrador y se almacena en `wp_options` (`lud_ajustes_correos`).
+- Tareas programadas:
+  - `lud_tarea_correos_diarios`: recordatorios de mora.
+  - `lud_tarea_recordatorio_datos`: recordatorios de actualización de datos (si pasaron 6 meses y no hubo recordatorio en 30 días).
+  - `lud_tarea_resumen_directiva`: ejecuta a diario pero solo envía el resumen el primer día de cada mes.
 
 ## Seguridad y privacidad
 - Bloqueo de acceso directo mediante `ABSPATH` en todos los archivos.
@@ -146,4 +166,5 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - Créditos frontend: `includes/class-module-creditos.php`
 - Shortcodes de socios: `includes/class-frontend-shortcodes.php`
 - Tesorería admin: `includes/class-admin-tesoreria.php`
+- Notificaciones y plantillas de correo: `includes/class-notificaciones.php`
 - Estilos: `assets/css/lud-style.css`
