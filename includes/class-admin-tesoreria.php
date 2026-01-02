@@ -222,6 +222,7 @@ class LUD_Admin_Tesoreria {
             WHERE (c.fecha_ultimo_aporte < '$fecha_corte_mora' AND c.estado_socio = 'activo')
                OR (cr.id IS NOT NULL)
             GROUP BY c.user_id
+            ORDER BY u.display_name ASC
         ");
 
         // 6. Métricas de cartera y operación para Presidencia/Secretaría
@@ -238,6 +239,16 @@ class LUD_Admin_Tesoreria {
 
         $socios_activos = intval( $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'") );
         $socios_morosos = count($morosos);
+
+        // Histórico entregas secretaría agrupado por mes-año (últimos 6 meses)
+        $historico_secretaria = $wpdb->get_results("
+            SELECT DATE_FORMAT(fecha_gasto, '%Y-%m') as periodo, SUM(monto) as total
+            FROM {$wpdb->prefix}fondo_gastos
+            WHERE categoria = 'secretaria'
+            GROUP BY periodo
+            ORDER BY periodo DESC
+            LIMIT 6
+        ");
 
         // Solicitudes de retiro (pendientes para decisión)
         $retiros_pendientes = $wpdb->get_results(
@@ -311,21 +322,30 @@ class LUD_Admin_Tesoreria {
                 <small><?php echo ($indicador_meta == 0) ? '✅ Meta Cumplida' : 'Falta recaudar en aportes'; ?></small>
             </div>
 
-            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Muestra cuánto dinero de Secretaría se ha recaudado y falta entregar en el mes.">
-                <h4 style="margin:0; color:#e65100;">📂 Caja Secretaría (Mes)</h4>
-                <div style="font-size:1.5rem; font-weight:bold; color:#ef6c00;">$ <?php echo number_format($pendiente_entrega_sec, 0, ',', '.'); ?></div>
-                
-                <?php if($pendiente_entrega_sec > 0 && $puede_editar): ?>
-                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Confirmas que entregas el dinero FÍSICO a la secretaria? \n\nEsto creará un gasto y descontará el dinero de la Caja Mayor.');">
-                        <input type="hidden" name="action" value="lud_entregar_secretaria">
-                        <input type="hidden" name="monto" value="<?php echo $pendiente_entrega_sec; ?>">
-                        <?php wp_nonce_field('lud_pay_sec', 'security'); ?>
-                        <button class="button button-small" style="margin-top:5px; width:100%;">🤝 Confirmar Entrega</button>
-                    </form>
-                <?php elseif($pendiente_entrega_sec <= 0): ?>
-                    <small style="color:#27ae60;">✅ Al día (Entregado)</small>
-                <?php endif; ?>
+            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Solo muestra lo recaudado para Secretaría en el mes en curso.">
+                <h4 style="margin:0; color:#e65100;">📂 Caja Secretaría (Recaudo Mes)</h4>
+                <div style="font-size:1.5rem; font-weight:bold; color:#ef6c00;">$ <?php echo number_format($recaudo_sec_mes, 0, ',', '.'); ?></div>
+                <small>Corresponde a las cuotas de secretaría registradas este mes.</small>
             </div>
+        </div>
+
+        <div class="lud-card" style="border-left:4px solid #546e7a; margin-bottom:30px;" title="Histórico de entregas efectuadas a Secretaría por mes.">
+            <h3 style="margin-top:0;">📑 Histórico Entregas Secretaría</h3>
+            <?php if ( empty( $historico_secretaria ) ): ?>
+                <p style="color:#666;">Sin registros de entregas.</p>
+            <?php else: ?>
+                <table class="widefat striped">
+                    <thead><tr><th>Mes</th><th>Total entregado</th></tr></thead>
+                    <tbody>
+                    <?php foreach ( $historico_secretaria as $fila ): ?>
+                        <tr>
+                            <td><?php echo esc_html( $fila->periodo ); ?></td>
+                            <td style="font-weight:bold; color:#2c3e50;">$ <?php echo number_format( $fila->total, 0, ',', '.' ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
 
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px; margin-bottom:30px;">
@@ -375,59 +395,6 @@ class LUD_Admin_Tesoreria {
                 ?>
                 <small><?php echo $socios_morosos; ?> con alerta en cartera: <?php echo esc_html($texto_morosos); ?></small>
             </div>
-        </div>
-
-        <div class="lud-card" style="border-left:5px solid #8e44ad; margin-bottom:30px;" title="Ayuda: Aprobar o rechazar retiros voluntarios solicitados por los socios.">
-            <h3>📤 Solicitudes de Retiro</h3>
-            <?php if ( empty( $retiros_pendientes ) ): ?>
-                <p style="color:#27ae60;">✅ No hay retiros pendientes de decisión.</p>
-            <?php else: ?>
-                <table class="widefat striped">
-                    <thead>
-                        <tr>
-                            <th>Socio</th>
-                            <th>Monto estimado</th>
-                            <th>Motivo socio</th>
-                            <th>Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ( $retiros_pendientes as $r ): ?>
-                        <tr>
-                            <td>
-                                <strong><?php echo esc_html( $r->display_name ); ?></strong><br>
-                                <small>Solicitado: <?php echo date_i18n( 'd/M H:i', strtotime( $r->fecha_solicitud ) ); ?></small>
-                            </td>
-                            <td style="color:#2c3e50; font-weight:bold;">
-                                $ <?php echo number_format( $r->monto_estimado, 0, ',', '.' ); ?>
-                            </td>
-                            <td style="max-width:260px;"><?php echo nl2br( esc_html( $r->detalle ) ); ?></td>
-                            <td>
-                                <?php if ( $puede_editar ): ?>
-                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="margin-bottom:8px;">
-                                        <input type="hidden" name="action" value="lud_responder_retiro">
-                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
-                                        <input type="hidden" name="decision" value="aprobado">
-                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
-                                        <button class="button button-primary" style="width:100%;" title="Aprueba el retiro para entregarlo en la próxima reunión con liquidez.">Aprobar</button>
-                                    </form>
-                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
-                                        <input type="hidden" name="action" value="lud_responder_retiro">
-                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
-                                        <input type="hidden" name="decision" value="rechazado">
-                                        <textarea name="motivo" rows="2" style="width:100%; margin-bottom:6px;" placeholder="Motivo de rechazo (obligatorio)" required></textarea>
-                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
-                                        <button class="button button-link-delete" style="width:100%; color:#c0392b;" title="Requiere escribir el motivo para notificar a la asamblea.">Rechazar</button>
-                                    </form>
-                                <?php else: ?>
-                                    <small>Solo lectura.</small>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php endif; ?>
         </div>
 
         <?php if ( !empty($morosos) ): ?>
@@ -580,6 +547,59 @@ class LUD_Admin_Tesoreria {
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
+        </div>
+
+        <div class="lud-card" style="border-left:5px solid #8e44ad; margin-bottom:30px;" title="Ayuda: Aprobar o rechazar retiros voluntarios solicitados por los socios.">
+            <h3>📤 Solicitudes de Retiro</h3>
+            <?php if ( empty( $retiros_pendientes ) ): ?>
+                <p style="color:#27ae60;">✅ No hay retiros pendientes de decisión.</p>
+            <?php else: ?>
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th>Socio</th>
+                            <th>Monto estimado</th>
+                            <th>Motivo socio</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $retiros_pendientes as $r ): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo esc_html( $r->display_name ); ?></strong><br>
+                                <small>Solicitado: <?php echo date_i18n( 'd/M H:i', strtotime( $r->fecha_solicitud ) ); ?></small>
+                            </td>
+                            <td style="color:#2c3e50; font-weight:bold;">
+                                $ <?php echo number_format( $r->monto_estimado, 0, ',', '.' ); ?>
+                            </td>
+                            <td style="max-width:260px;"><?php echo nl2br( esc_html( $r->detalle ) ); ?></td>
+                            <td>
+                                <?php if ( $puede_editar ): ?>
+                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="margin-bottom:8px;">
+                                        <input type="hidden" name="action" value="lud_responder_retiro">
+                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
+                                        <input type="hidden" name="decision" value="aprobado">
+                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
+                                        <button class="button button-primary" style="width:100%;" title="Aprueba el retiro para entregarlo en la próxima reunión con liquidez.">Aprobar</button>
+                                    </form>
+                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
+                                        <input type="hidden" name="action" value="lud_responder_retiro">
+                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
+                                        <input type="hidden" name="decision" value="rechazado">
+                                        <textarea name="motivo" rows="2" style="width:100%; margin-bottom:6px;" placeholder="Motivo de rechazo (obligatorio)" required></textarea>
+                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
+                                        <button class="button button-link-delete" style="width:100%; color:#c0392b;" title="Requiere escribir el motivo para notificar a la asamblea.">Rechazar</button>
+                                    </form>
+                                <?php else: ?>
+                                    <small>Solo lectura.</small>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
         <?php
     }

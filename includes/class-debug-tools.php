@@ -206,6 +206,7 @@ class LUD_Debug_Tools {
             $nombre_completo = $nombre . ' ' . $apellido;
             $documento = rand(1000000000, 1999999999);
             $slug = sanitize_title($nombre . '-' . $apellido . '-' . $i);
+            // Comentario: El dominio solicitado es @prototipo.com.co para aislar los usuarios sembrados.
             $email = $slug . '@prototipo.com.co';
 
             $user_id = wp_insert_user(array(

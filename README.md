@@ -78,7 +78,7 @@ Creación gestionada por `LUD_DB_Installer`:
 
 ## Panel de Tesorería
 Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):
-- **Dashboard general** (`view=dashboard`): KPIs de caja, intereses, multas, reservas de secretaría, disponibilidad para créditos, y paneles de aprobación.
+- **Dashboard general** (`view=dashboard`): KPIs de caja, intereses, multas, reservas de secretaría, disponibilidad para créditos, y paneles de aprobación. Incluye Caja Secretaría con el recaudo del mes y un histórico de entregas mensuales.
 - **Desembolsos y cierres:**
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
