@@ -18,6 +18,8 @@ class LUD_Debug_Tools {
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'register_debug_menu' ) );
         add_action( 'admin_post_lud_run_tests', array( $this, 'ejecutar_bateria_pruebas' ) );
+        add_action( 'admin_post_lud_seed_datos', array( $this, 'sembrar_datos_prueba' ) );
+        add_action( 'admin_post_lud_limpiar_seed', array( $this, 'limpiar_datos_prueba' ) );
     }
 
     /**
@@ -46,6 +48,24 @@ class LUD_Debug_Tools {
         <div class="wrap">
             <h1>🧪 Suite de Pruebas "Caja de Cristal"</h1>
             <p>Este módulo ejecuta simulaciones y muestra las matemáticas internas para validación manual.</p>
+            
+            <div style="background:#fff; padding:20px; border:1px solid #ccd0d4; border-radius:5px; margin-bottom:20px;">
+                <h3>🎯 LUD Test: Datos de Prueba (Seeding)</h3>
+                <p>Genera 33 socios con ahorros, créditos y moras simuladas para probar dashboards y reportes. No sube PDFs.</p>
+                <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
+                        <input type="hidden" name="action" value="lud_seed_datos">
+                        <?php wp_nonce_field('seed_datos_nonce', 'security'); ?>
+                        <button type="submit" class="button button-primary">🌱 Sembrar Datos de Prueba</button>
+                    </form>
+                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Eliminar los 33 usuarios sembrados y sus datos relacionados?');">
+                        <input type="hidden" name="action" value="lud_limpiar_seed">
+                        <?php wp_nonce_field('limpiar_seed_nonce', 'security'); ?>
+                        <button type="submit" class="button">🧹 Limpiar Datos de Prueba</button>
+                    </form>
+                </div>
+                <p style="color:#666; margin-top:8px;">Solo afecta usuarios marcados como sembrados. No toca datos reales.</p>
+            </div>
             
             <div style="background:#fff; padding:20px; border:1px solid #ccd0d4; border-radius:5px; margin-bottom:20px;">
                 <h3>⚠️ Modo de Pruebas</h3>
@@ -161,6 +181,237 @@ class LUD_Debug_Tools {
         set_transient( 'lud_test_logs', $paquete_logs, 300 );
         wp_redirect( admin_url( 'admin.php?page=lud-debug' ) );
         exit;
+    }
+
+    /**
+     * Semilla 33 usuarios con ahorros, créditos y moras simuladas.
+     */
+    public function sembrar_datos_prueba() {
+        if ( ! current_user_can( 'update_core' ) ) wp_die( 'Acceso denegado' );
+        check_admin_referer( 'seed_datos_nonce', 'security' );
+
+        global $wpdb;
+        $nombres = array('Ana', 'Carlos', 'Luisa', 'Pedro', 'María', 'Jorge', 'Laura', 'Sofía', 'Andrés', 'Valentina', 'Camilo', 'Paula', 'Felipe', 'Daniela', 'Juan', 'Sara', 'Miguel', 'Manuela', 'José', 'Diana', 'Ricardo', 'Juliana', 'Santiago', 'Carolina', 'Esteban', 'Verónica', 'Hernán', 'Natalia', 'Oscar', 'Lorena', 'Mauricio', 'Fernanda', 'Álvaro');
+        $apellidos = array('García', 'Rodríguez', 'Martínez', 'López', 'González', 'Pérez', 'Sánchez', 'Ramírez', 'Torres', 'Castro', 'Vargas', 'Rojas', 'Moreno', 'Mendoza', 'Ortega', 'Ruiz', 'Navarro', 'Suárez', 'Hernández', 'Cárdenas', 'Prieto', 'Gómez', 'Jiménez', 'Reyes', 'Patiño', 'Salazar', 'Cortés', 'Valencia', 'Quintero', 'Mejía', 'Bautista', 'Parra', 'Acosta');
+
+        $this->limpiar_datos_prueba(true);
+
+        $ids_seed = array();
+        $fecha_base = new DateTime();
+        $fecha_base->modify('-6 months');
+
+        for ( $i = 0; $i < 33; $i++ ) {
+            $nombre = $nombres[ $i % count($nombres) ];
+            $apellido = $apellidos[ $i % count($apellidos) ];
+            $nombre_completo = $nombre . ' ' . $apellido;
+            $documento = rand(1000000000, 1999999999);
+            $slug = sanitize_title($nombre . '-' . $apellido . '-' . $i);
+            $email = $slug . '@fondo.prototipo.com.co';
+
+            $user_id = wp_insert_user(array(
+                'user_login' => $slug,
+                'user_pass'  => '123',
+                'user_email' => $email,
+                'display_name' => $nombre_completo,
+                'role' => 'lud_socio'
+            ));
+
+            if ( is_wp_error( $user_id ) ) continue;
+            $ids_seed[] = $user_id;
+            update_user_meta( $user_id, 'lud_seed_demo', 1 );
+
+            $acciones = rand(1, 10);
+            $saldo_ahorro = rand(2, 20) * 50000;
+            $rendimientos = rand(0, 5) * 10000;
+            $fecha_aporte = clone $fecha_base;
+            $fecha_aporte->modify('+' . rand(0,5) . ' months');
+
+            $wpdb->insert( "{$wpdb->prefix}fondo_cuentas", array(
+                'user_id' => $user_id,
+                'numero_acciones' => $acciones,
+                'saldo_ahorro_capital' => $saldo_ahorro,
+                'saldo_rendimientos' => $rendimientos,
+                'fecha_ultimo_aporte' => $fecha_aporte->format('Y-m-05'),
+                'deuda_secretaria' => 0,
+                'estado_socio' => 'activo',
+                'beneficiario_nombre' => 'Beneficiario ' . $nombre,
+                'beneficiario_parentesco' => 'Familiar',
+                'beneficiario_telefono' => '300' . rand(1000000, 9999999),
+                'tipo_documento' => 'CC',
+                'numero_documento' => $documento,
+                'fecha_nacimiento' => '1990-01-01',
+                'direccion_residencia' => 'Calle ' . rand(1,100) . ' # ' . rand(1,50) . '-' . rand(1,50),
+                'ciudad_pais' => 'Villa del Rosario',
+                'telefono_contacto' => '31' . rand(10000000, 99999999),
+                'email_contacto' => $email,
+                'fecha_ingreso_fondo' => date('Y-m-d', strtotime('-1 year')),
+                'aporte_inicial' => 50000 * $acciones,
+                'actividad_economica' => 'Empleado',
+                'origen_fondos' => 'Salario',
+                'banco_medio_pago' => 'Bancolombia',
+                'permite_galeria' => 1
+            ));
+
+            // Pagos históricos para gráficas
+            for ( $m = 3; $m >= 1; $m-- ) {
+                $fecha_pago = date('Y-m-d H:i:s', strtotime("-$m months"));
+                $detalle_pago = 'SEED_PAGO_' . $user_id . '_' . $m;
+                $monto_pago = $acciones * 51000;
+
+                $wpdb->insert("{$wpdb->prefix}fondo_transacciones", array(
+                    'user_id' => $user_id,
+                    'tipo' => 'pago_consolidado',
+                    'monto' => $monto_pago,
+                    'estado' => 'aprobado',
+                    'detalle' => $detalle_pago,
+                    'fecha_registro' => $fecha_pago,
+                    'fecha_aprobacion' => $fecha_pago
+                ));
+                $tx_id = $wpdb->insert_id;
+
+                $wpdb->insert("{$wpdb->prefix}fondo_recaudos_detalle", array(
+                    'transaccion_id' => $tx_id,
+                    'user_id' => $user_id,
+                    'concepto' => 'ahorro',
+                    'monto' => $acciones * 50000,
+                    'fecha_recaudo' => $fecha_pago
+                ));
+                $wpdb->insert("{$wpdb->prefix}fondo_recaudos_detalle", array(
+                    'transaccion_id' => $tx_id,
+                    'user_id' => $user_id,
+                    'concepto' => 'cuota_secretaria',
+                    'monto' => $acciones * 1000,
+                    'fecha_recaudo' => $fecha_pago
+                ));
+            }
+        }
+
+        // Asignar créditos y moras a un subconjunto
+        $morosos = array_slice( $ids_seed, 0, rand(1,3) );
+        foreach ( $ids_seed as $user_id ) {
+            $tiene_credito = ( rand(0,1) === 1 );
+            if ( ! $tiene_credito ) continue;
+
+            $tipo_credito = ( rand(0,1) === 1 ) ? 'corriente' : 'agil';
+            $monto_credito = ( $tipo_credito === 'corriente' ) ? rand(5,20)*100000 : rand(5,15)*100000;
+            $plazo = ( $tipo_credito === 'corriente' ) ? rand(6,24) : 1;
+            $tasa = ( $tipo_credito === 'corriente' ) ? 2.0 : 1.5;
+            $cuota = round( ($monto_credito/$plazo) + ($monto_credito * ($tasa/100)), 2 );
+
+            $estado_credito = in_array( $user_id, $morosos ) ? 'mora' : 'activo';
+            $saldo_actual = in_array( $user_id, $morosos ) ? $monto_credito * 0.8 : $monto_credito * 0.6;
+            $fecha_aprob = date('Y-m-d H:i:s', strtotime('-2 months'));
+
+            $deudor = $this->elegir_deudor_seed( $ids_seed, $user_id );
+
+            $wpdb->insert( "{$wpdb->prefix}fondo_creditos", array(
+                'user_id' => $user_id,
+                'tipo_credito' => $tipo_credito,
+                'monto_solicitado' => $monto_credito,
+                'monto_aprobado' => $monto_credito,
+                'codigo_seguimiento' => 'SEED-' . strtoupper( wp_generate_password(6,false,false) ),
+                'plazo_meses' => $plazo,
+                'tasa_interes' => $tasa,
+                'cuota_estimada' => $cuota,
+                'deudor_solidario_id' => $deudor,
+                'firma_solicitante' => null,
+                'firma_deudor' => null,
+                'ip_registro' => '127.0.0.1',
+                'user_agent' => 'Seeder/1.0',
+                'fecha_aprobacion_deudor' => $fecha_aprob,
+                'datos_entrega' => 'Simulación desembolso LUD Test',
+                'saldo_actual' => $saldo_actual,
+                'estado' => $estado_credito,
+                'fecha_solicitud' => $fecha_aprob,
+                'fecha_aprobacion' => $fecha_aprob
+            ));
+
+            // Amortización simulada básica
+            $credito_id = $wpdb->insert_id;
+            if ( $tipo_credito === 'corriente' ) {
+                $fecha_cuota = new DateTime($fecha_aprob);
+                for ( $c = 1; $c <= $plazo; $c++ ) {
+                    $fecha_cuota->modify('+1 month');
+                    $wpdb->insert( "{$wpdb->prefix}fondo_amortizacion", array(
+                        'credito_id' => $credito_id,
+                        'numero_cuota' => $c,
+                        'fecha_vencimiento' => $fecha_cuota->format('Y-m-05'),
+                        'capital_programado' => round($monto_credito/$plazo, 2),
+                        'interes_programado' => round($monto_credito*($tasa/100),2),
+                        'valor_cuota_total' => $cuota,
+                        'estado' => ( $c <= 2 ) ? 'pagado' : 'pendiente'
+                    ));
+                }
+            }
+        }
+
+        // Retiros de prueba
+        foreach ( array_slice( $ids_seed, 0, 2 ) as $user_id ) {
+            $wpdb->insert( "{$wpdb->prefix}fondo_retiros", array(
+                'user_id' => $user_id,
+                'monto_estimado' => rand(5,15)*100000,
+                'detalle' => 'Simulación retiro LUD Test',
+                'estado' => 'pendiente',
+                'fecha_solicitud' => current_time('mysql')
+            ));
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=lud-debug&seed=ok' ) );
+        exit;
+    }
+
+    /**
+     * Selecciona un deudor solidario distinto del solicitante.
+     */
+    private function elegir_deudor_seed( $pool, $actual ) {
+        $otros = array_diff( $pool, array( $actual ) );
+        if ( empty( $otros ) ) return 0;
+        $otros = array_values( $otros );
+        return $otros[ array_rand( $otros ) ];
+    }
+
+    /**
+     * Limpia exclusivamente los usuarios sembrados y sus datos relacionados.
+     *
+     * @param bool $silencioso Evita redirección cuando se usa internamente.
+     */
+    public function limpiar_datos_prueba( $silencioso = false ) {
+        if ( ! $silencioso ) {
+            if ( ! current_user_can( 'update_core' ) ) wp_die( 'Acceso denegado' );
+            check_admin_referer( 'limpiar_seed_nonce', 'security' );
+        }
+
+        global $wpdb;
+        $usuarios = get_users( array(
+            'meta_key' => 'lud_seed_demo',
+            'meta_value' => 1,
+            'fields' => array('ID')
+        ) );
+
+        if ( empty( $usuarios ) ) {
+            if ( ! $silencioso ) wp_redirect( admin_url('admin.php?page=lud-debug&seed=clean') );
+            return;
+        }
+
+        $ids = wp_list_pluck( $usuarios, 'ID' );
+        $ids_in = implode( ',', array_map('intval', $ids) );
+
+        // Eliminar registros vinculados
+        $wpdb->query( "DELETE FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE user_id IN ($ids_in)" );
+        $wpdb->query( "DELETE FROM {$wpdb->prefix}fondo_transacciones WHERE user_id IN ($ids_in)" );
+        $wpdb->query( "DELETE FROM {$wpdb->prefix}fondo_retiros WHERE user_id IN ($ids_in)" );
+        $wpdb->query( "DELETE FROM {$wpdb->prefix}fondo_amortizacion WHERE credito_id IN (SELECT id FROM {$wpdb->prefix}fondo_creditos WHERE user_id IN ($ids_in))" );
+        $wpdb->query( "DELETE FROM {$wpdb->prefix}fondo_creditos WHERE user_id IN ($ids_in)" );
+        $wpdb->query( "DELETE FROM {$wpdb->prefix}fondo_cuentas WHERE user_id IN ($ids_in)" );
+
+        foreach ( $ids as $id ) {
+            wp_delete_user( $id );
+        }
+
+        if ( ! $silencioso ) {
+            wp_redirect( admin_url('admin.php?page=lud-debug&seed=clean') );
+            exit;
+        }
     }
 
     // --- TEST 1: INGRESO DE DINERO BASE ---
