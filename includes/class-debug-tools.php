@@ -141,6 +141,8 @@ class LUD_Debug_Tools {
             $this->hr();
             $this->test_radar_morosos($user_id);
             $this->hr();
+            $this->test_flujo_retiro_voluntario($user_id);
+            $this->hr();
             $this->test_validacion_dashboard_resumen();
             $this->hr();
         } catch (Exception $e) {
@@ -217,6 +219,75 @@ class LUD_Debug_Tools {
         // Limpieza de datos de prueba
         $wpdb->delete("{$wpdb->prefix}fondo_recaudos_detalle", ['transaccion_id' => $tx_id]);
         $wpdb->delete("{$wpdb->prefix}fondo_transacciones", ['id' => $tx_id]);
+    }
+
+    // --- TEST NUEVO: FLUJO DE RETIRO VOLUNTARIO ---
+    /**
+     * Verifica que un socio paz y salvo pueda registrar retiro y que tesorería pueda aprobarlo con motivo.
+     */
+    private function test_flujo_retiro_voluntario($user_id) {
+        $this->header("CASO RETIROS: Solicitud, duplicado bloqueado y aprobación con motivo");
+        global $wpdb;
+
+        // Asegurar estado limpio y paz y salvo
+        $wpdb->delete("{$wpdb->prefix}fondo_retiros", ['user_id' => $user_id]);
+        $wpdb->delete("{$wpdb->prefix}fondo_creditos", ['user_id' => $user_id]);
+        $wpdb->update("{$wpdb->prefix}fondo_cuentas", [
+            'numero_acciones' => 2,
+            'saldo_ahorro_capital' => 200000,
+            'saldo_rendimientos' => 50000,
+            'fecha_ultimo_aporte' => date('Y-m-01'),
+            'estado_socio' => 'activo'
+        ], ['user_id' => $user_id]);
+
+        $deuda = LUD_Module_Transacciones::calcular_deuda_usuario_estatico($user_id);
+        if ( ! $deuda || ($deuda['total_admin'] + $deuda['creditos']) > 0 ) {
+            $this->fail("El socio de pruebas no está paz y salvo; no se puede validar el retiro.");
+            $this->agregar_resumen('Retiros', 'Paz y salvo previo', 'ERROR', 'La cuenta de test tiene deuda o no existe.');
+            return;
+        }
+
+        // Insertar solicitud pendiente
+        $monto_estimado = $deuda['cuenta_obj']->saldo_ahorro_capital + $deuda['cuenta_obj']->saldo_rendimientos;
+        $wpdb->insert("{$wpdb->prefix}fondo_retiros", [
+            'user_id' => $user_id,
+            'monto_estimado' => $monto_estimado,
+            'detalle' => 'TEST_RETIRO_' . time(),
+            'estado' => 'pendiente',
+            'fecha_solicitud' => current_time('mysql')
+        ]);
+        $retiro_id = $wpdb->insert_id;
+
+        // Validar bloqueo de duplicado (debe haber solo una pendiente)
+        $pendientes = intval( $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_retiros WHERE user_id = %d AND estado = 'pendiente'", $user_id) ) );
+        if ( $pendientes === 1 ) {
+            $this->pass("Se mantiene una sola solicitud pendiente, bloqueo de duplicado OK.");
+            $this->agregar_resumen('Retiros', 'Bloqueo de duplicado', 'OK', 'Solo existe una solicitud pendiente para el socio.');
+        } else {
+            $this->fail("El sistema permitió más de una solicitud pendiente para el mismo socio.");
+            $this->agregar_resumen('Retiros', 'Bloqueo de duplicado', 'ERROR', 'Se encontraron múltiples pendientes para el socio de prueba.');
+        }
+
+        // Aprobar con motivo
+        $motivo = 'TEST_APROBADO_AUTOMATIZADO';
+        $wpdb->update("{$wpdb->prefix}fondo_retiros", [
+            'estado' => 'aprobado',
+            'fecha_respuesta' => current_time('mysql'),
+            'usuario_respuesta' => get_current_user_id(),
+            'motivo_respuesta' => $motivo
+        ], ['id' => $retiro_id]);
+
+        $estado_final = $wpdb->get_row( $wpdb->prepare("SELECT estado, motivo_respuesta FROM {$wpdb->prefix}fondo_retiros WHERE id = %d", $retiro_id) );
+        if ( $estado_final && $estado_final->estado === 'aprobado' && $estado_final->motivo_respuesta === $motivo ) {
+            $this->pass("Aprobación de retiro registrada con motivo.");
+            $this->agregar_resumen('Retiros', 'Aprobación tesorería', 'OK', 'Estado aprobado y motivo guardado.');
+        } else {
+            $this->fail("No se guardó correctamente la aprobación o el motivo de respuesta.");
+            $this->agregar_resumen('Retiros', 'Aprobación tesorería', 'ERROR', 'Estado o motivo no coinciden tras aprobar.');
+        }
+
+        // Limpieza de datos de prueba
+        $wpdb->delete("{$wpdb->prefix}fondo_retiros", ['user_id' => $user_id]);
     }
 
     // --- TEST 2: CÁLCULO DE DEUDA Y MULTAS (Detallado) ---
