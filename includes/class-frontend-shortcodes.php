@@ -296,6 +296,10 @@ class LUD_Frontend_Shortcodes {
             );
         }
 
+        // Disparar notificación y marcar fecha de última actualización.
+        update_user_meta( $user_id, 'lud_ultima_actualizacion_datos', current_time( 'mysql' ) );
+        do_action( 'lud_evento_datos_actualizados', $user_id, 'Zona de socios', 'Beneficiario y contacto' );
+
         wp_redirect( add_query_arg( 'lud_profile_saved', '1', wp_get_referer() ) );
         exit;
     }
