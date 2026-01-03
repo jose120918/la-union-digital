@@ -218,33 +218,61 @@ class LUD_Frontend_Shortcodes {
                 </div>
             </div>
             <?php if ( ! empty( $resumen_creditos ) ): ?>
-            <div class="lud-card" style="margin-top:12px; background:#f0f4ff; border:1px solid #cfdafc;">
-                <div class="lud-header" style="margin-bottom:6px;">
-                    <h4 style="margin:0;"><?php echo count( $resumen_creditos ) > 1 ? 'Créditos Vigentes' : 'Crédito Vigente'; ?></h4>
-                    <span class="lud-badge pendiente">En curso</span>
-                </div>
-                <p style="color:#4a4a4a; font-size:0.9rem; margin-top:0;">Mostramos el monto aprobado, la cuota estimada y la fecha objetivo de cierre (esta fecha puede ajustarse si hay refinanciación).</p>
-                <?php foreach ( $resumen_creditos as $cred ): ?>
-                    <div style="background:#fff; border:1px dashed #c5cae9; padding:10px; border-radius:8px; margin-bottom:10px;">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-                            <div>
-                                <div style="font-weight:700; color:#1a237e;">Crédito #<?php echo $cred['id']; ?> · <?php echo ucfirst( $cred['tipo'] ); ?></div>
-                                <small style="color:#5c6bc0;">Estado: <?php echo ucfirst( $cred['estado'] ); ?></small>
-                            </div>
-                            <div style="text-align:right;">
-                                <span style="display:block; font-size:0.8rem; color:#666;">Monto aprobado</span>
-                                <strong style="font-size:1.1rem; color:#1b5e20;">$ <?php echo number_format( $cred['monto'], 0, ',', '.' ); ?></strong>
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;">
-                            <div style="color:#2e7d32; font-weight:600;">Cuota estimada: $ <?php echo number_format( $cred['cuota'], 0, ',', '.' ); ?></div>
-                            <div style="color:#37474f;">Fecha fin proyectada: <?php echo date_i18n( 'd M Y', strtotime( $cred['fecha_fin'] ) ); ?></div>
-                        </div>
+            <div class="lud-card lud-accordion-credito" style="margin-top:6px; padding:10px 12px;">
+                <button type="button" class="lud-accordion-toggle" aria-expanded="false">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-weight:700; color:#1a237e;"><?php echo count( $resumen_creditos ) > 1 ? 'Créditos vigentes' : 'Crédito vigente'; ?></span>
+                        <span class="lud-badge pendiente">En curso</span>
                     </div>
-                <?php endforeach; ?>
+                    <span class="lud-accordion-caret" aria-hidden="true">▼</span>
+                </button>
+                <div class="lud-accordion-panel" style="display:none; margin-top:8px;">
+                    <p style="color:#4a4a4a; font-size:0.88rem; margin:0 0 8px;">Mostramos monto aprobado, cuota estimada y fecha objetivo de cierre (puede ajustarse si hay refinanciación).</p>
+                    <?php foreach ( $resumen_creditos as $cred ): ?>
+                        <div style="background:#f7f9fc; border:1px solid #e0e6f6; padding:10px 12px; border-radius:8px; margin-bottom:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                                <div>
+                                    <div style="font-weight:700; color:#1a237e;">Crédito #<?php echo $cred['id']; ?> · <?php echo ucfirst( $cred['tipo'] ); ?></div>
+                                    <small style="color:#5c6bc0;">Estado: <?php echo ucfirst( $cred['estado'] ); ?></small>
+                                </div>
+                                <div style="text-align:right;">
+                                    <span style="display:block; font-size:0.8rem; color:#666;">Monto aprobado</span>
+                                    <strong style="font-size:1.05rem; color:#1b5e20;">$ <?php echo number_format( $cred['monto'], 0, ',', '.' ); ?></strong>
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; font-size:0.9rem;">
+                                <div style="color:#2e7d32; font-weight:600;">Cuota: $ <?php echo number_format( $cred['cuota'], 0, ',', '.' ); ?></div>
+                                <div style="color:#37474f;">Fin proyectado: <?php echo date_i18n( 'd M Y', strtotime( $cred['fecha_fin'] ) ); ?></div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
             </div>
             <?php endif; ?>
         </div>
+        <script>
+            // Comentario: manejamos la apertura/cierre del acordeón de crédito vigente para mantener la UI compacta.
+            document.addEventListener('DOMContentLoaded', function(){
+                const acordiones = document.querySelectorAll('.lud-accordion-credito .lud-accordion-toggle');
+                acordiones.forEach(function(boton){
+                    boton.addEventListener('click', function(){
+                        const panel = boton.nextElementSibling;
+                        const abierto = boton.getAttribute('aria-expanded') === 'true';
+                        boton.setAttribute('aria-expanded', abierto ? 'false' : 'true');
+                        panel.style.display = abierto ? 'none' : 'block';
+                        const caret = boton.querySelector('.lud-accordion-caret');
+                        if (caret) caret.textContent = abierto ? '▼' : '▲';
+                    });
+                });
+            });
+        </script>
+        <style>
+            /* Comentario: acordeón minimalista para crédito vigente sin ocupar espacio extra. */
+            .lud-accordion-credito { background:#f9fbff; border:1px solid #e5eaf5; }
+            .lud-accordion-toggle { width:100%; background:transparent; border:none; padding:6px 4px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; }
+            .lud-accordion-toggle:focus { outline:2px solid #c5cae9; }
+            .lud-accordion-caret { color:#5c6bc0; font-size:0.9rem; }
+        </style>
         <?php
         return ob_get_clean();
     }
@@ -408,9 +436,7 @@ class LUD_Frontend_Shortcodes {
         $detalle_bruto = isset( $movimiento->detalle ) ? (string) $movimiento->detalle : '';
         $concepto = $this->obtener_concepto_legible( $movimiento );
         $texto_comprobante = ( $movimiento->tipo === 'desembolso_credito' ) ? 'Ver contrato' : 'Ver comprobante';
-        $es_actualizacion = ( $movimiento->tipo === 'actualizacion_datos'
-            || ( floatval( $movimiento->monto ) === 0 && ( stripos( $detalle_bruto, 'Actualización de datos' ) !== false || stripos( $detalle_bruto, 'ADMIN EDICIÓN' ) !== false ) )
-        );
+        $es_actualizacion = $this->movimiento_es_actualizacion( $movimiento, $detalle_bruto );
 
         $texto_monto = '$ ' . number_format( $movimiento->monto );
         $clase_monto = 'lud-monto-num';
@@ -420,14 +446,7 @@ class LUD_Frontend_Shortcodes {
             $concepto = 'Actualización de datos realizada';
         }
 
-        $detalle_interactivo = '';
-        if ( ! empty( $detalle_bruto ) ) {
-            if ( $es_actualizacion ) {
-                $detalle_interactivo = '<button type="button" class="lud-btn-detalle" data-detalle="' . esc_attr( wp_strip_all_tags( $detalle_bruto ) ) . '">Ver cambios</button>';
-            } else {
-                $detalle_interactivo = '<div class="lud-detalle-linea">' . esc_html( $detalle_bruto ) . '</div>';
-            }
-        }
+        $detalle_interactivo = $this->construir_detalle_movimiento( $detalle_bruto, $es_actualizacion );
 
         ob_start();
         ?>
@@ -454,6 +473,61 @@ class LUD_Frontend_Shortcodes {
         </div>
         <?php
         return ob_get_clean();
+    }
+
+    /**
+     * Construye el bloque de detalle formateado o un botón modal para actualizaciones.
+     */
+    private function construir_detalle_movimiento( $detalle_bruto, $es_actualizacion ) {
+        if ( empty( $detalle_bruto ) ) {
+            return '';
+        }
+
+        if ( $es_actualizacion ) {
+            $detalle_limpio = $this->formatear_detalle_actualizacion( $detalle_bruto );
+            return '<button type="button" class="lud-btn-detalle" data-detalle="' . esc_attr( $detalle_limpio ) . '">Ver cambios</button>';
+        }
+
+        $detalle_legible = $this->formatear_detalle_generico( $detalle_bruto );
+        return '<div class="lud-detalle-linea">' . esc_html( $detalle_legible ) . '</div>';
+    }
+
+    /**
+     * Determina si un movimiento representa una actualización de datos.
+     */
+    private function movimiento_es_actualizacion( $movimiento, $detalle_bruto ) {
+        $monto_cero = floatval( $movimiento->monto ) === 0;
+        $detalle_normalizado = strtolower( $detalle_bruto );
+        $contiene_palabras = ( strpos( $detalle_normalizado, 'actualización de datos' ) !== false || strpos( $detalle_normalizado, 'admin edición' ) !== false );
+        return ( $movimiento->tipo === 'actualizacion_datos' ) || ( $monto_cero && $contiene_palabras );
+    }
+
+    /**
+     * Formatea un detalle de actualización en texto claro separado por saltos de línea.
+     */
+    private function formatear_detalle_actualizacion( $detalle_bruto ) {
+        // Comentario: limpiamos prefijos técnicos para mostrar solo los cambios.
+        $limpio = preg_replace( '/^admin edici[oó]n[^:]*:/i', '', $detalle_bruto );
+        $limpio = trim( $limpio );
+
+        // Comentario: convertimos "Campo: 'A' -> 'B'" a "Campo: A → B".
+        $limpio = preg_replace( "/'([^']*)'\\s*->\\s*'([^']*)'/", '$1 → $2', $limpio );
+        $limpio = str_replace( array( " -> ", '  ' ), array( ' → ', ' ' ), $limpio );
+
+        // Comentario: separamos por coma para mostrar cada cambio en línea distinta.
+        $partes = array_map( 'trim', explode( ',', $limpio ) );
+        $partes = array_filter( $partes );
+
+        return implode( "\n• ", $partes );
+    }
+
+    /**
+     * Formatea detalles generales eliminando ruido visual.
+     */
+    private function formatear_detalle_generico( $detalle_bruto ) {
+        $detalle = trim( $detalle_bruto );
+        $detalle = preg_replace( "/'([^']*)'\\s*->\\s*'([^']*)'/", '$1 → $2', $detalle );
+        return $detalle;
     }
 
     /**
