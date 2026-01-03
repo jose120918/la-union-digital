@@ -224,6 +224,8 @@ class LUD_Debug_Tools {
             $acciones = rand(1, 10);
             $saldo_ahorro = rand(2, 20) * 50000;
             $rendimientos = rand(0, 5) * 10000;
+            $meses_pagados = rand(1, 3); // Comentario: cantidad de pagos recientes coherentes con la fecha de último aporte.
+            $ultima_fecha_pago = null;   // Comentario: guardamos la fecha para actualizar la ficha de cuenta al final.
             $fecha_aporte = clone $fecha_base;
             $fecha_aporte->modify('+' . rand(0,5) . ' months');
 
@@ -253,11 +255,13 @@ class LUD_Debug_Tools {
                 'permite_galeria' => 1
             ));
 
-            // Pagos históricos para gráficas
-            for ( $m = 3; $m >= 1; $m-- ) {
-                $fecha_pago = date('Y-m-d H:i:s', strtotime("-$m months"));
+            // Pagos históricos para gráficas y coherencia con fecha_ultimo_aporte
+            for ( $m = $meses_pagados; $m >= 1; $m-- ) {
+                $fecha_pago_base = strtotime("-$m months");
+                $fecha_pago = date('Y-m-05 10:00:00', $fecha_pago_base); // Comentario: usamos día 5 para cuadrar con la mora diaria.
                 $detalle_pago = 'SEED_PAGO_' . $user_id . '_' . $m;
                 $monto_pago = $acciones * 51000;
+                $ultima_fecha_pago = $fecha_pago; // Comentario: guardamos la última fecha aprobada.
 
                 $wpdb->insert("{$wpdb->prefix}fondo_transacciones", array(
                     'user_id' => $user_id,
@@ -284,6 +288,15 @@ class LUD_Debug_Tools {
                     'monto' => $acciones * 1000,
                     'fecha_recaudo' => $fecha_pago
                 ));
+            }
+
+            // Actualizar la ficha con la fecha del último pago real generado
+            if ( $ultima_fecha_pago ) {
+                $wpdb->update(
+                    "{$wpdb->prefix}fondo_cuentas",
+                    array( 'fecha_ultimo_aporte' => date('Y-m-d', strtotime($ultima_fecha_pago)) ),
+                    array( 'user_id' => $user_id )
+                );
             }
         }
 
