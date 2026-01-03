@@ -261,7 +261,10 @@ class LUD_Module_Creditos {
             <div style="margin:10px 0 15px; padding:12px; border:1px solid #e0e0e0; border-radius:10px; background:#fafafa;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
                     <div>
-                        <div style="font-size:0.9rem; color:#666;">Score de pago</div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <div style="font-size:0.9rem; color:#666;">Score de pago</div>
+                            <span title="El score suma cuotas pagadas a tiempo, resta puntos por cuotas en mora/parcial y evalúa cuántos créditos terminaste correctamente. Se normaliza entre 0 y 100 para priorizar la cola de liquidez." style="font-size:0.9rem; color:#0d47a1; cursor:help;">ℹ️</span>
+                        </div>
                         <div style="font-size:1.6rem; font-weight:700; color:<?php echo $color_score; ?>;"><?php echo $score_crediticio; ?>/100</div>
                         <small style="color:#555;"><?php echo esc_html( $etiqueta_score ); ?></small>
                     </div>
@@ -269,7 +272,7 @@ class LUD_Module_Creditos {
                         <div style="height:12px; background:#e0e0e0; border-radius:20px; overflow:hidden;">
                             <div style="height:100%; width:<?php echo $score_crediticio; ?>%; background:linear-gradient(90deg, #c62828, #f9a825, #2e7d32);"></div>
                         </div>
-                        <small style="display:block; margin-top:6px; color:#777;">Si mantienes pagos puntuales, tu score subirá y tendrás mayor prioridad.</small>
+                        <small style="display:block; margin-top:6px; color:#777;">Si mantienes pagos puntuales y sin mora activa, tu score sube y mejoras prioridad en la cola de liquidez.</small>
                     </div>
                 </div>
             </div>
