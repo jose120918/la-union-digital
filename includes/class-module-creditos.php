@@ -78,6 +78,66 @@ class LUD_Module_Creditos {
         return false;
     }
 
+    /**
+     * Calcula un puntaje crediticio (0-100) según historial de cuotas y moras.
+     * Suma puntos por cuotas pagadas en estado "pagado" y resta por estados "mora/parcial".
+     */
+    public static function calcular_score_socio($user_id) {
+        global $wpdb;
+        // Comentario: recopilamos los créditos del socio para evaluar su historial.
+        $creditos = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, estado FROM {$wpdb->prefix}fondo_creditos WHERE user_id = %d",
+            $user_id
+        ) );
+
+        if ( empty( $creditos ) ) {
+            return 50; // Comentario: sin historial, partimos de un score neutro.
+        }
+
+        $creditos_ids = array_map( 'intval', wp_list_pluck( $creditos, 'id' ) );
+        $lista_ids = implode( ',', $creditos_ids );
+
+        $cuotas_pagadas = 0;
+        $cuotas_mora = 0;
+        $total_cuotas = 0;
+
+        if ( ! empty( $lista_ids ) ) {
+            $estados_cuotas = $wpdb->get_col(
+                "SELECT estado FROM {$wpdb->prefix}fondo_amortizacion WHERE credito_id IN ($lista_ids)"
+            );
+
+            foreach ( $estados_cuotas as $estado ) {
+                $total_cuotas++;
+                if ( $estado === 'pagado' ) {
+                    $cuotas_pagadas++;
+                } elseif ( $estado === 'mora' || $estado === 'parcial' ) {
+                    $cuotas_mora++;
+                }
+            }
+        }
+
+        // Comentario: si aún no hay cuotas creadas, usamos estados de crédito como señal.
+        if ( $total_cuotas === 0 ) {
+            $creditos_pagados = array_reduce( $creditos, function( $carry, $cred ) {
+                return $carry + ( $cred->estado === 'pagado' ? 1 : 0 );
+            }, 0 );
+            $creditos_en_mora = array_reduce( $creditos, function( $carry, $cred ) {
+                return $carry + ( $cred->estado === 'mora' ? 1 : 0 );
+            }, 0 );
+
+            $score_base = 60 + ( $creditos_pagados * 8 ) - ( $creditos_en_mora * 12 );
+            return max( 0, min( 100, round( $score_base ) ) );
+        }
+
+        // Comentario: ponderamos cumplimiento y moras para normalizar entre 0 y 100.
+        $puntualidad = ( $cuotas_pagadas / $total_cuotas ) * 60; // hasta 60 puntos por buen pago
+        $penalizacion = ( $cuotas_mora / $total_cuotas ) * 80;   // resta fuerte por moras
+
+        $score = 40 + $puntualidad - $penalizacion;
+
+        return max( 0, min( 100, round( $score ) ) );
+    }
+
     // --- 2. SIMULADOR (Frontend Solicitante) ---
     /**
      * Renderiza el simulador de crédito para el socio solicitante.
@@ -87,6 +147,16 @@ class LUD_Module_Creditos {
 
         global $wpdb;
         $user_id = get_current_user_id();
+        $score_crediticio = self::calcular_score_socio($user_id);
+        $etiqueta_score = 'Viabilidad media';
+        $color_score = '#f9a825';
+        if ( $score_crediticio >= 80 ) {
+            $etiqueta_score = 'Alta viabilidad';
+            $color_score = '#2e7d32';
+        } elseif ( $score_crediticio < 50 ) {
+            $etiqueta_score = 'Baja viabilidad';
+            $color_score = '#c62828';
+        }
 
         // A. Validar Sanciones (Lista Negra)
         if ( self::verificar_sancion_mora($user_id) ) {
@@ -119,6 +189,7 @@ class LUD_Module_Creditos {
         $msg_refinanciacion = '';
         $bloqueo_70 = false;
         $solo_credito_agil = false; // Comentario: si no cumple 70%, bloquea solo corrientes.
+        $bloqueo_corriente_diciembre = ( date('m') === '12' ); // Comentario: Art 8.1, sin corrientes en diciembre.
 
         if ( $credito_activo ) {
             $monto_prestado = floatval($credito_activo->monto_aprobado); // Usar el aprobado, no el solicitado
@@ -143,6 +214,11 @@ class LUD_Module_Creditos {
                     Has pagado el <b>'.number_format($porcentaje_pagado, 1).'%</b>. Cumples el requisito para refinanciar.<br>
                     <small>Se descontará tu saldo pendiente ($'.number_format($saldo_pendiente).') del nuevo desembolso.</small>
                 </div>';
+
+                // Comentario: la refinanciación requiere crédito corriente, por tanto se bloquea en diciembre.
+                if ( $bloqueo_corriente_diciembre ) {
+                    $solo_credito_agil = false;
+                }
             }
         }
 
@@ -182,6 +258,21 @@ class LUD_Module_Creditos {
             <div class="lud-header">
                 <h3>Simulador de Crédito</h3>
             </div>
+            <div style="margin:10px 0 15px; padding:12px; border:1px solid #e0e0e0; border-radius:10px; background:#fafafa;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                    <div>
+                        <div style="font-size:0.9rem; color:#666;">Score de pago</div>
+                        <div style="font-size:1.6rem; font-weight:700; color:<?php echo $color_score; ?>;"><?php echo $score_crediticio; ?>/100</div>
+                        <small style="color:#555;"><?php echo esc_html( $etiqueta_score ); ?></small>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="height:12px; background:#e0e0e0; border-radius:20px; overflow:hidden;">
+                            <div style="height:100%; width:<?php echo $score_crediticio; ?>%; background:linear-gradient(90deg, #c62828, #f9a825, #2e7d32);"></div>
+                        </div>
+                        <small style="display:block; margin-top:6px; color:#777;">Si mantienes pagos puntuales, tu score subirá y tendrás mayor prioridad.</small>
+                    </div>
+                </div>
+            </div>
             <?php if ( $en_modo_fila ): ?>
                 <div class="lud-alert success lud-alert-compacta" style="align-items:flex-start;">
                     <span style="font-size:1.3rem;" aria-hidden="true">⏳</span>
@@ -197,6 +288,9 @@ class LUD_Module_Creditos {
             <?php endif; ?>
             <?php echo $msg; ?>
             <?php echo $msg_refinanciacion; ?>
+            <?php if ( $bloqueo_corriente_diciembre ): ?>
+                <div class="lud-alert error lud-alert-compacta">❄️ Por estatutos (Art 8.1), no se radican créditos corrientes en Diciembre.</div>
+            <?php endif; ?>
 
             <form action="<?php echo esc_url( admin_url('admin-post.php') ); ?>" method="POST" id="formCredito">
                 <input type="hidden" name="action" value="lud_solicitar_credito">
@@ -209,7 +303,7 @@ class LUD_Module_Creditos {
                     <label class="lud-label">Tipo de Crédito</label>
                     <div class="lud-radio-group">
                         <label class="lud-radio-card <?php echo $solo_credito_agil ? '' : 'selected'; ?>" id="opt_corriente">
-                            <input type="radio" name="tipo_credito" value="corriente" <?php echo $solo_credito_agil ? 'disabled' : 'checked'; ?> onchange="cambiarTipo('corriente')">
+                            <input type="radio" name="tipo_credito" value="corriente" <?php echo ($solo_credito_agil || $bloqueo_corriente_diciembre) ? 'disabled' : 'checked'; ?> onchange="cambiarTipo('corriente')">
                             <div>
                                 <span class="lud-radio-title">🏢 Corriente (2% mes)</span>
                                 <span class="lud-radio-desc">Cupo Máx: $<?php echo number_format($tope_corriente,0); ?>. Plazo máx 36 meses.</span>
@@ -288,6 +382,7 @@ class LUD_Module_Creditos {
             const saldoPendiente = parseFloat(document.getElementById('saldo_pendiente').value) || 0;
             const esRefinanciacion = (document.getElementById('modo_refinanciacion').value === '1');
             const soloAgil = <?php echo $solo_credito_agil ? 'true' : 'false'; ?>;
+            const bloqueoCorrienteDiciembre = <?php echo $bloqueo_corriente_diciembre ? 'true' : 'false'; ?>;
 
             // --- CANVAS FIRMA ---
             var canvas = document.getElementById('signature-pad');
@@ -387,6 +482,7 @@ class LUD_Module_Creditos {
                 }
 
                 if (monto > maximo || monto <= 0 || !firma) valido = false;
+                if (bloqueoCorrienteDiciembre && tipoActual === 'corriente') valido = false;
                 
                 const btn = document.getElementById('btn_solicitar');
                 btn.disabled = !valido;
@@ -397,7 +493,7 @@ class LUD_Module_Creditos {
             canvas.addEventListener('mouseup', calcular); canvas.addEventListener('touchend', calcular);
             
             // Iniciar
-            if (soloAgil) {
+            if (soloAgil || bloqueoCorrienteDiciembre) {
                 cambiarTipo('agil');
             } else {
                 cambiarTipo('corriente');
@@ -439,7 +535,11 @@ class LUD_Module_Creditos {
         $mes_actual = date('m');
         $aviso_diciembre = "";
         $liquidez = self::get_liquidez_disponible();
-        if ( $mes_actual == '12' ) {
+
+        if ( $mes_actual == '12' && $tipo === 'corriente' ) {
+            wp_die('<div style="padding:30px; font-family:sans-serif; color:#b71c1c;"><h2>❄️ Solicitud bloqueada</h2><p>Por estatutos (Art 8.1), no se radican créditos corrientes en Diciembre.</p></div>');
+        } elseif ( $mes_actual == '12' ) {
+            // Comentario: los créditos ágiles siguen mostrando aviso de entrega en enero.
             $aviso_diciembre = " [Solicitud Diciembre: Desembolso Enero]";
         }
 
@@ -455,11 +555,15 @@ class LUD_Module_Creditos {
         if ( $credito_activo && $tipo === 'corriente' ) {
             $pagado = floatval($credito_activo->monto_aprobado) - floatval($credito_activo->saldo_actual);
             $pct = ($pagado / floatval($credito_activo->monto_aprobado)) * 100;
-            
+
             if ( $pct < 70 ) wp_die("Error: No cumples con el 70% pagado para un nuevo crédito corriente.");
+            if ( $this->es_credito_refinanciado( $credito_activo ) ) {
+                wp_die('<div style="padding:30px; font-family:sans-serif; color:#b71c1c;"><h2>⚠️ Refinanciación no permitida</h2><p>Este crédito ya fue refinanciado una vez. Debes terminar de pagarlo.</p></div>');
+            }
             
             // Si pasa, agregamos nota de refinanciación
             $aviso_diciembre .= " || REFINANCIACIÓN: Se cruza con Crédito #{$credito_activo->id}. Saldo anterior: $".number_format($credito_activo->saldo_actual);
+            $aviso_diciembre .= " || REFINANCIA_ORIGEN:{$credito_activo->id}";
         }
 
         // Cálculos
@@ -688,6 +792,18 @@ class LUD_Module_Creditos {
             return;
         }
 
+        // Comentario: priorizamos por score de buen pagador y luego por fecha de llegada.
+        foreach ( $creditos_fila as $indice => $credito_fila ) {
+            $creditos_fila[ $indice ]->score_prioridad = self::calcular_score_socio( $credito_fila->user_id );
+        }
+
+        usort( $creditos_fila, function( $a, $b ) {
+            if ( $a->score_prioridad == $b->score_prioridad ) {
+                return strcmp( $a->fecha_solicitud, $b->fecha_solicitud );
+            }
+            return ( $a->score_prioridad < $b->score_prioridad ) ? 1 : -1;
+        } );
+
         $liquidez_disponible = self::get_liquidez_disponible();
         foreach ( $creditos_fila as $credito_fila ) {
             if ( $credito_fila->monto_solicitado <= $liquidez_disponible ) {
@@ -715,6 +831,29 @@ class LUD_Module_Creditos {
     private function enviar_aviso_deudor($deudor_id, $solicitante_id, $monto, $credito_id, $token) {
         // Delegamos al motor de notificaciones para aplicar la plantilla unificada.
         do_action( 'lud_evento_credito_deudor', $deudor_id, $solicitante_id, $monto, $credito_id, $token );
+    }
+
+    /**
+     * Verifica si un crédito ya fue producto de una refinanciación previa.
+     */
+    private function es_credito_refinanciado( $credito_row ) {
+        if ( ! $credito_row ) {
+            return false;
+        }
+
+        $datos_entrega = strtolower( (string) $credito_row->datos_entrega );
+        if ( strpos( $datos_entrega, 'refinancia_origen' ) !== false || strpos( $datos_entrega, 'refinanciaci' ) !== false ) {
+            return true;
+        }
+
+        global $wpdb;
+        $referencia = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_creditos WHERE user_id = %d AND datos_entrega LIKE %s",
+            $credito_row->user_id,
+            '%REFINANCIA_ORIGEN:' . $credito_row->id . '%'
+        ) );
+
+        return $referencia > 0;
     }
 
     /**
