@@ -101,24 +101,48 @@ class LUD_Frontend_Shortcodes {
 
             <?php if ( $total_pendiente > 0 ): ?>
             <div class="lud-debt-box" style="border:none; padding:12px; background:#fff8e1; border-radius:12px; box-shadow:inset 0 0 0 1px #f1e0b3;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                     <h4 style="margin:0; font-size:0.95rem; color:#b26a00;">⚠️ Pendientes por pagar</h4>
-                    <span style="font-weight:700; color:#b71c1c;">$ <?php echo number_format($total_pendiente); ?></span>
+                    <span style="font-weight:700; color:#b71c1c; font-size:1.05rem;">$ <?php echo number_format($total_pendiente); ?></span>
                 </div>
-                <div style="display:flex; flex-direction:column; gap:6px;">
+                <div style="display:flex; flex-direction:column; gap:10px;">
                     <?php
                     $conceptos = array(
-                        array( 'nombre' => 'Ahorro', 'detalle' => 'Cuotas ahorradas pendientes', 'subtotal' => $debe_ahorro ),
-                        array( 'nombre' => 'Administración', 'detalle' => 'Cuota de secretaría', 'subtotal' => $debe_secretaria ),
-                        array( 'nombre' => 'Intereses Créditos', 'detalle' => 'Interés corriente de créditos', 'subtotal' => $debe_interes_credito ),
-                        array( 'nombre' => 'Intereses Mora', 'detalle' => 'Recargos por días de retraso', 'subtotal' => $debe_interes_mora ),
-                        array( 'nombre' => 'Multas', 'detalle' => 'Multas estatutarias', 'subtotal' => $debe_multa ),
-                        array( 'nombre' => 'Otros', 'detalle' => 'Ajustes o cargos especiales', 'subtotal' => $debe_otros ),
+                        array(
+                            'nombre' => 'Ahorro',
+                            'detalle' => $meses_vencidos > 0 ? ('Cuotas de ahorro por '.$meses_vencidos.' mes(es)') : 'Saldo pendiente de ahorro',
+                            'subtotal' => $debe_ahorro
+                        ),
+                        array(
+                            'nombre' => 'Administración',
+                            'detalle' => $meses_vencidos > 0 ? ('Cuotas de secretaría por '.$meses_vencidos.' mes(es)') : 'Saldo pendiente de secretaría',
+                            'subtotal' => $debe_secretaria
+                        ),
+                        array(
+                            'nombre' => 'Intereses Créditos',
+                            'detalle' => 'Interés corriente acumulado de créditos',
+                            'subtotal' => $debe_interes_credito
+                        ),
+                        array(
+                            'nombre' => 'Intereses Mora',
+                            'detalle' => 'Recargos por días de retraso en créditos',
+                            'subtotal' => $debe_interes_mora
+                        ),
+                        array(
+                            'nombre' => 'Multas',
+                            'detalle' => $meses_multa > 0 ? ('Multas generadas (aprox. '.$meses_multa.' mes(es) en mora)') : 'Multas estatutarias pendientes',
+                            'subtotal' => $debe_multa
+                        ),
+                        array(
+                            'nombre' => 'Otros',
+                            'detalle' => 'Ajustes o cargos especiales',
+                            'subtotal' => $debe_otros
+                        ),
                     );
                     foreach ( $conceptos as $con ):
                         if ( $con['subtotal'] <= 0 ) continue; // Comentario: ocultamos conceptos en cero.
                     ?>
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed #f0d9a7;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:6px 0; border-bottom:1px dashed #f0d9a7;">
                             <div>
                                 <div style="font-weight:600; color:#4e342e;"><?php echo esc_html( $con['nombre'] ); ?></div>
                                 <small style="color:#8d6e63; font-size:0.78rem;"><?php echo esc_html( $con['detalle'] ); ?></small>
@@ -126,6 +150,10 @@ class LUD_Frontend_Shortcodes {
                             <div style="text-align:right; color:#c62828; font-weight:700;">$ <?php echo number_format( $con['subtotal'] ); ?></div>
                         </div>
                     <?php endforeach; ?>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid #f0d9a7;">
+                    <span style="font-weight:700; color:#4e342e;">Total a pagar:</span>
+                    <span style="font-weight:800; color:#b71c1c;">$ <?php echo number_format($total_pendiente); ?></span>
                 </div>
             </div>
             <?php else: ?>
