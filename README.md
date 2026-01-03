@@ -57,7 +57,7 @@ Creación gestionada por `LUD_DB_Installer`:
   - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
 - `[lud_resumen_ahorro]`: tarjeta de ahorro con estado “Al día/Pendiente”, deudas calculadas y rendimientos anuales.
-- En “Mi Ahorro” se desglosan las deudas por concepto (ahorro, administración, intereses, mora, multas, otros) mostrando solo rubros con saldo > 0 en una lista compacta con meses vencidos y subtotal.
+- En “Mi Ahorro” se desglosan las deudas por concepto (ahorro, administración, intereses, mora, multas, otros) mostrando solo rubros con saldo > 0 en una lista compacta; cada rubro indica días de atraso y su valor mensual base. El rubro de multas trae un tooltip que explica que se cobra $1.000 por acción y por día después del día 5, acumulando mes a mes hasta registrar el pago.
 - `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
 - Historial con filtros por fecha, conceptos legibles, paginación AJAX y tarjetas compactas a dos columnas con badge de estado, monto a la derecha e identificador de movimiento más acceso al comprobante.
 - `[lud_perfil_datos]`: captura y guarda beneficiario (cumplimiento estatutario art. 22).

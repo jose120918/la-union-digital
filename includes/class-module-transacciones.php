@@ -81,6 +81,7 @@ class LUD_Module_Transacciones {
         $deuda_capital = 0;
         $deuda_interes_corriente = 0;
         $deuda_interes_mora = 0;
+        $dias_mora_creditos = 0; // Comentario: acumulamos los días vencidos de créditos para el desglose en frontend.
 
         foreach ($creditos_activos as $credito) {
             $saldo = floatval($credito->saldo_actual);
@@ -102,6 +103,7 @@ class LUD_Module_Transacciones {
                     // Fórmula: Saldo * 4% * (Días Tarde / 30)
                     $mora_calculada = $saldo * 0.04 * ($dias_tarde / 30);
                     $deuda_interes_mora += $mora_calculada;
+                    $dias_mora_creditos += $dias_tarde; // Comentario: servirá para explicar cuántos días de mora tiene el crédito ágil.
                 }
             }
             // Nota: Para créditos corrientes, el interés ya suele estar en la cuota fija o tabla de amortización, 
@@ -121,6 +123,7 @@ class LUD_Module_Transacciones {
             // Totales para sugerencias
             'creditos' => $deuda_capital + $deuda_interes_corriente + $deuda_interes_mora,
             'total_admin' => $debe_ahorro + $debe_secretaria + $debe_multa,
+            'dias_mora_creditos' => $dias_mora_creditos,
             'cuenta_obj' => $cuenta
         ];
     }

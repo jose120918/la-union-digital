@@ -51,6 +51,7 @@ class LUD_Frontend_Shortcodes {
         $debe_multa = $info_deuda ? floatval( $info_deuda['multa'] ) : 0;
         $debe_interes_credito = $info_deuda ? floatval( $info_deuda['creditos_interes'] ) : 0;
         $debe_interes_mora = $info_deuda ? floatval( $info_deuda['creditos_mora'] ) : 0;
+        $dias_mora_creditos = $info_deuda ? intval( $info_deuda['dias_mora_creditos'] ) : 0;
         $debe_otros = 0; // Comentario: valor reservado para cargos adicionales.
 
         // Comentario: meses calendario vencidos a partir del último aporte.
@@ -71,7 +72,7 @@ class LUD_Frontend_Shortcodes {
 
         // Comentario: estimación de meses en mora a partir de los días calculados para multas.
         $dias_mora_estimados = ( $acciones > 0 ) ? $debe_multa / ( 1000 * $acciones ) : 0;
-        $meses_multa = ( $dias_mora_estimados > 0 ) ? ceil( $dias_mora_estimados / 30 ) : 0;
+        $dias_mora_redondeados = ( $dias_mora_estimados > 0 ) ? ceil( $dias_mora_estimados ) : 0; // Comentario: días acumulados de mora para mostrar el cálculo exacto de la multa.
 
         $total_pendiente = $debe_ahorro + $debe_secretaria + $debe_multa + $debe_interes_credito + $debe_interes_mora + $debe_otros;
 
@@ -112,33 +113,35 @@ class LUD_Frontend_Shortcodes {
                     $conceptos = array(
                         array(
                             'nombre' => 'Ahorro',
-                            // Comentario: describimos monto mensual y tiempo de mora en formato días/mes(es).
+                            // Comentario: indicamos cuota mensual y días acumulados desde el último pago.
                             'detalle' => $meses_vencidos > 0
-                                ? ('Cuota mensual $'.number_format($valor_cuota_ahorro).' · mora de '.($dias_vencidos >= 31 ? '1 mes '.($dias_vencidos-30).' día(s)' : $dias_vencidos.' día(s)'))
+                                ? ('Cuota mensual $'.number_format($valor_cuota_ahorro).' · mora de '.number_format($dias_vencidos, 0, ',', '.').' día(s) acumulados')
                                 : ('Cuota mensual $'.number_format($valor_cuota_ahorro).' pendiente'),
                             'subtotal' => $debe_ahorro
                         ),
                         array(
                             'nombre' => 'Secretaría',
                             'detalle' => $meses_vencidos > 0
-                                ? ('Cuota mensual $'.number_format($valor_cuota_secretaria).' · mora de '.($dias_vencidos >= 31 ? '1 mes '.($dias_vencidos-30).' día(s)' : $dias_vencidos.' día(s)'))
+                                ? ('Cuota mensual $'.number_format($valor_cuota_secretaria).' · mora de '.number_format($dias_vencidos, 0, ',', '.').' día(s) acumulados')
                                 : ('Cuota mensual $'.number_format($valor_cuota_secretaria).' pendiente'),
                             'subtotal' => $debe_secretaria
                         ),
                         array(
                             'nombre' => 'Intereses Créditos',
-                            'detalle' => 'Interés corriente acumulado de créditos',
+                            'detalle' => 'Interés corriente (1.5% mensual) sobre el saldo activo; días en mora del crédito: '.number_format( $dias_mora_creditos, 0, ',', '.' ).'.',
                             'subtotal' => $debe_interes_credito
                         ),
                         array(
                             'nombre' => 'Intereses Mora',
-                            'detalle' => 'Recargos por días de retraso en créditos ('.$dias_mora_estimados.' día(s) aprox.)',
+                            'detalle' => $dias_mora_creditos > 0
+                                ? ('Recargos de mora por '.number_format( $dias_mora_creditos, 0, ',', '.' ).' día(s) vencidos · 4% mensual prorrateado')
+                                : 'Sin mora activa en créditos',
                             'subtotal' => $debe_interes_mora
                         ),
                         array(
                             'nombre' => 'Multas',
-                            'detalle' => $meses_multa > 0
-                                ? ('Multas generadas ~'.$meses_multa.' mes(es) de mora · cuota referencial $'.number_format( ($acciones > 0 ? (1000 * $acciones) : 0) ))
+                            'detalle' => $dias_mora_redondeados > 0
+                                ? ('Multas por '.number_format( $dias_mora_redondeados, 0, ',', '.' ).' día(s) de atraso acumulado · $1.000 por acción y día <span title=\"Se cobra $1.000 por cada acción y por cada día que pasa después del día 5 del mes sin pagar el ahorro. Se suma mes a mes hasta que se registre el pago.\">ℹ️</span>')
                                 : 'Multas estatutarias pendientes',
                             'subtotal' => $debe_multa
                         ),
@@ -154,7 +157,7 @@ class LUD_Frontend_Shortcodes {
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:6px 0; border-bottom:1px dashed #f0d9a7;">
                             <div>
                                 <div style="font-weight:600; color:#4e342e;"><?php echo esc_html( $con['nombre'] ); ?></div>
-                                <small style="color:#8d6e63; font-size:0.78rem;"><?php echo esc_html( $con['detalle'] ); ?></small>
+                                <small style="color:#8d6e63; font-size:0.78rem;"><?php echo wp_kses( $con['detalle'], array( 'span' => array( 'title' => true ) ) ); ?></small>
                             </div>
                             <div style="text-align:right; color:#c62828; font-weight:700;">$ <?php echo number_format( $con['subtotal'] ); ?></div>
                         </div>
