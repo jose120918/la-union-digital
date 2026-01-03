@@ -218,7 +218,7 @@ class LUD_Frontend_Shortcodes {
                 </div>
             </div>
             <?php if ( ! empty( $resumen_creditos ) ): ?>
-            <div class="lud-card" style="margin-top:12px; padding:10px 12px; background:#f7f9fc; border:1px solid #e0e6f6; border-radius:10px;">
+            <div class="lud-card" style="margin-top:14px; padding:10px 12px; background:#f7f9fc; border:1px solid #e0e6f6; border-radius:10px; box-shadow:none;">
                 <?php foreach ( $resumen_creditos as $cred ): ?>
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
                         <div>
