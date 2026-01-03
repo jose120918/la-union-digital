@@ -100,38 +100,33 @@ class LUD_Frontend_Shortcodes {
             <p style="margin-top:8px; color:#666; font-size:0.9rem;">Activo desde: <?php echo $datos->fecha_ingreso_fondo ? date_i18n('d M Y', strtotime($datos->fecha_ingreso_fondo)) : 'Sin registro'; ?></p>
 
             <?php if ( $total_pendiente > 0 ): ?>
-            <div class="lud-debt-box" style="border:none; padding:10px; background:#f9f9f9;">
-                <h4 style="margin:0 0 8px 0; font-size:0.95rem; color:#444;">⚠️ Desglose de deuda por concepto</h4>
-                <div style="font-size:0.85rem; color:#555; margin-bottom:6px;">Total pendiente: $ <?php echo number_format($total_pendiente); ?></div>
-                <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:#444;">
-                    <thead style="text-align:left; color:#666;">
-                        <tr>
-                            <th style="padding:4px 0;">Concepto</th>
-                            <th style="padding:4px 0;">Meses vencidos</th>
-                            <th style="padding:4px 0; text-align:right;">Total adeudado</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $conceptos = array(
-                            array( 'nombre' => 'Ahorro', 'meses' => $meses_vencidos, 'subtotal' => $debe_ahorro ),
-                            array( 'nombre' => 'Administración', 'meses' => $meses_vencidos, 'subtotal' => $debe_secretaria ),
-                            array( 'nombre' => 'Intereses Créditos', 'meses' => $debe_interes_credito > 0 ? 1 : 0, 'subtotal' => $debe_interes_credito ),
-                            array( 'nombre' => 'Intereses Mora', 'meses' => $debe_interes_mora > 0 ? 1 : 0, 'subtotal' => $debe_interes_mora ),
-                            array( 'nombre' => 'Multas', 'meses' => $meses_multa, 'subtotal' => $debe_multa ),
-                            array( 'nombre' => 'Otros', 'meses' => 0, 'subtotal' => $debe_otros ),
-                        );
-                        foreach ( $conceptos as $con ):
-                            if ( $con['subtotal'] <= 0 ) continue; // Comentario: ocultamos conceptos en cero.
-                        ?>
-                            <tr>
-                                <td style="padding:4px 0; color:#444;"><?php echo esc_html( $con['nombre'] ); ?></td>
-                                <td style="padding:4px 0; color:#555;"><?php echo intval( $con['meses'] ); ?></td>
-                                <td style="padding:4px 0; text-align:right; color:#b71c1c;">$ <?php echo number_format( $con['subtotal'] ); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+            <div class="lud-debt-box" style="border:none; padding:12px; background:#fff8e1; border-radius:12px; box-shadow:inset 0 0 0 1px #f1e0b3;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <h4 style="margin:0; font-size:0.95rem; color:#b26a00;">⚠️ Pendientes por pagar</h4>
+                    <span style="font-weight:700; color:#b71c1c;">$ <?php echo number_format($total_pendiente); ?></span>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    <?php
+                    $conceptos = array(
+                        array( 'nombre' => 'Ahorro', 'detalle' => 'Cuotas ahorradas pendientes', 'subtotal' => $debe_ahorro ),
+                        array( 'nombre' => 'Administración', 'detalle' => 'Cuota de secretaría', 'subtotal' => $debe_secretaria ),
+                        array( 'nombre' => 'Intereses Créditos', 'detalle' => 'Interés corriente de créditos', 'subtotal' => $debe_interes_credito ),
+                        array( 'nombre' => 'Intereses Mora', 'detalle' => 'Recargos por días de retraso', 'subtotal' => $debe_interes_mora ),
+                        array( 'nombre' => 'Multas', 'detalle' => 'Multas estatutarias', 'subtotal' => $debe_multa ),
+                        array( 'nombre' => 'Otros', 'detalle' => 'Ajustes o cargos especiales', 'subtotal' => $debe_otros ),
+                    );
+                    foreach ( $conceptos as $con ):
+                        if ( $con['subtotal'] <= 0 ) continue; // Comentario: ocultamos conceptos en cero.
+                    ?>
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px dashed #f0d9a7;">
+                            <div>
+                                <div style="font-weight:600; color:#4e342e;"><?php echo esc_html( $con['nombre'] ); ?></div>
+                                <small style="color:#8d6e63; font-size:0.78rem;"><?php echo esc_html( $con['detalle'] ); ?></small>
+                            </div>
+                            <div style="text-align:right; color:#c62828; font-weight:700;">$ <?php echo number_format( $con['subtotal'] ); ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
             </div>
             <?php else: ?>
             <div class="lud-success-box">✅ Estás al día con tus aportes.</div>
