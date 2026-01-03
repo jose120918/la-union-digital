@@ -119,7 +119,7 @@ class LUD_Frontend_Shortcodes {
                             'subtotal' => $debe_ahorro
                         ),
                         array(
-                            'nombre' => 'Administración',
+                            'nombre' => 'Secretaría',
                             'detalle' => $meses_vencidos > 0
                                 ? ('Cuota mensual $'.number_format($valor_cuota_secretaria).' · mora de '.($dias_vencidos >= 31 ? '1 mes '.($dias_vencidos-30).' día(s)' : $dias_vencidos.' día(s)'))
                                 : ('Cuota mensual $'.number_format($valor_cuota_secretaria).' pendiente'),
