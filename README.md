@@ -57,7 +57,7 @@ Creación gestionada por `LUD_DB_Installer`:
   - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
 - `[lud_resumen_ahorro]`: tarjeta de ahorro con estado “Al día/Pendiente”, deudas calculadas y rendimientos anuales.
-- En “Mi Ahorro” se desglosan las deudas por concepto (ahorro, administración, intereses, mora, multas, otros) mostrando solo rubros con saldo > 0 en una lista compacta con meses vencidos y subtotal.
+- En “Mi Ahorro” se desglosan las deudas por concepto (ahorro, administración, intereses, mora, multas, otros) mostrando solo rubros con saldo > 0 en una lista compacta; cada rubro indica días de atraso y su valor mensual base. El rubro de multas trae un tooltip que explica que se cobra $1.000 por acción y por día después del día 5, acumulando mes a mes hasta registrar el pago.
 - `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
 - Historial con filtros por fecha, conceptos legibles, paginación AJAX y tarjetas compactas a dos columnas con badge de estado, monto a la derecha e identificador de movimiento más acceso al comprobante.
 - `[lud_perfil_datos]`: captura y guarda beneficiario (cumplimiento estatutario art. 22).
@@ -104,7 +104,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
 - **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
-- **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado) y “Limpiar Datos de Prueba” (elimina únicamente esos usuarios y sus tablas relacionadas).
+- **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado). Los pagos sembrados se registran en el día 5 de cada mes y sincronizan `fecha_ultimo_aporte` con el último pago generado para evitar incoherencias de mora. “Limpiar Datos de Prueba” elimina únicamente esos usuarios y sus tablas relacionadas.
 - **Dashboard Tesorería:** lista de morosos ordenada A-Z, Caja Secretaría con recaudo del mes e histórico de entregas, y ficha de socio con fecha de incorporación y estado detallado de mora/al día.
 
 ## Reglas y límites vigentes
