@@ -141,7 +141,7 @@ class LUD_Frontend_Shortcodes {
                         array(
                             'nombre' => 'Multas',
                             'detalle' => $dias_mora_redondeados > 0
-                                ? ('Multas por '.number_format( $dias_mora_redondeados, 0, ',', '.' ).' día(s) de atraso acumulado · $1.000 por acción y día <span title=\"Se cobra $1.000 por cada acción y por cada día que pasa después del día 5 del mes sin pagar el ahorro. Se suma mes a mes hasta que se registre el pago.\">ℹ️</span>')
+                                ? ('Multas por '.number_format( $dias_mora_redondeados, 0, ',', '.' ).' día(s) de atraso acumulado <span title=\"Se cobra $1.000 por cada acción y por cada día que pasa después del día 5 del mes sin pagar el ahorro. Se suma mes a mes hasta que se registre el pago.\">ℹ️</span>')
                                 : 'Multas estatutarias pendientes',
                             'subtotal' => $debe_multa
                         ),
