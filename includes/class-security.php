@@ -21,30 +21,59 @@ class LUD_Security {
      * Entrega un archivo almacenado en la carpeta segura si el usuario tiene permisos.
      */
     public function servir_imagen_segura() {
-        // 1. Verificar Permisos (Solo Admin/Tesorero puede ver esto)
-        if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'lud_manage_tesoreria' ) && ! current_user_can( 'lud_view_tesoreria' ) ) {
-            wp_die( '⛔ Acceso Denegado: Documento Privado.' );
+        if ( ! is_user_logged_in() ) {
+            wp_die( '⛔ Acceso denegado: inicia sesión para ver el archivo.' );
         }
 
-        // 2. Validar que piden un archivo
+        // 1. Validar parámetro entrante
         if ( ! isset( $_GET['file'] ) ) wp_die( 'Archivo no especificado.' );
 
-        $filename = sanitize_file_name( $_GET['file'] );
-        
-        // 3. Construir la ruta segura
-        $upload_dir = wp_upload_dir();
-        $base_dir = $upload_dir['basedir'] . '/fondo_seguro/';
-        $file_path = $base_dir . $filename;
+        $ruta_param = sanitize_text_field( wp_unslash( $_GET['file'] ) );
+        $segmentos = array_filter( array_map( 'sanitize_file_name', explode( '/', $ruta_param ) ) );
+        $ruta_relativa = implode( '/', $segmentos );
 
-        // 4. Verificar que el archivo existe y está dentro de la carpeta segura (evitar hackeos de ruta)
-        if ( ! file_exists( $file_path ) || realpath( $file_path ) === false || strpos( realpath( $file_path ), realpath( $base_dir ) ) !== 0 ) {
+        if ( empty( $ruta_relativa ) ) {
+            wp_die( 'Ruta de archivo no válida.' );
+        }
+
+        // 2. Construir rutas normalizadas y blindadas contra traversal
+        $upload_dir = wp_upload_dir();
+        $base_dir = trailingslashit( wp_normalize_path( $upload_dir['basedir'] . '/fondo_seguro/' ) );
+        $file_path = wp_normalize_path( $base_dir . $ruta_relativa );
+
+        if ( ! file_exists( $file_path ) || strpos( $file_path, $base_dir ) !== 0 ) {
             wp_die( '❌ El archivo no existe o ha sido eliminado.' );
         }
 
-        // 5. Servir la imagen (Engañar al navegador para que crea que es un archivo público)
-        $mime = wp_check_filetype( $file_path );
-        header( 'Content-Type: ' . $mime['type'] );
+        // 3. Validar permisos: directiva siempre puede ver; socios solo sus archivos
+        $usuario_actual = get_current_user_id();
+        $es_directiva = current_user_can( 'manage_options' ) || current_user_can( 'lud_manage_tesoreria' ) || current_user_can( 'lud_view_tesoreria' );
+
+        if ( ! $es_directiva ) {
+            global $wpdb;
+            $es_comprobante = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = %d AND comprobante_url = %s",
+                $usuario_actual,
+                $ruta_relativa
+            ) );
+            $es_documento = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d AND url_documento_id = %s",
+                $usuario_actual,
+                basename( $ruta_relativa )
+            ) );
+
+            if ( ! $es_comprobante && ! $es_documento ) {
+                wp_die( '⛔ Acceso denegado a este archivo protegido.' );
+            }
+        }
+
+        // 4. Servir el archivo en línea
+        $mime = wp_check_filetype( basename( $file_path ) );
+        $tipo_mime = ! empty( $mime['type'] ) ? $mime['type'] : 'application/octet-stream';
+
+        header( 'Content-Type: ' . $tipo_mime );
         header( 'Content-Length: ' . filesize( $file_path ) );
+        header( 'Content-Disposition: inline; filename="' . basename( $file_path ) . '"' );
         readfile( $file_path );
         exit;
     }

@@ -51,6 +51,7 @@ Creación gestionada por `LUD_DB_Installer`:
   - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%), mostrando interés total del crédito y cuota mensual.
   - Bloquea solicitudes de crédito corriente cuya cuota resultante sea menor a $50.000 (alerta visual y validación backend, conforme estatutos).
   - Calcula y muestra un score de pago (0-100) con barra de viabilidad basada en cuotas pagadas y moras; se usa para priorizar la liberación de la cola de liquidez.
+  - Incluye tooltip que explica el cálculo del score (cuotas pagadas vs. cuotas en mora y créditos terminados) para que el socio entienda el orden de prioridad.
   - La cola de liquidez libera primero a socios con mejor score y luego respeta la fecha de llegada.
   - Bloquea corrientes en diciembre (Art. 8.1) y evita refinanciar un crédito que ya fue refinanciado una vez.
   - Solicita firma digital del socio y deudor solidario (canvas) y genera tokens de seguimiento.
@@ -58,8 +59,10 @@ Creación gestionada por `LUD_DB_Installer`:
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
 - `[lud_resumen_ahorro]`: tarjeta de ahorro con estado “Al día/Pendiente”, deudas calculadas y rendimientos anuales.
 - En “Mi Ahorro” se desglosan las deudas por concepto (ahorro, administración, intereses, mora, multas, otros) mostrando solo rubros con saldo > 0 en una lista compacta; cada rubro indica días de atraso y su valor mensual base. El rubro de multas trae un tooltip que explica que se cobra $1.000 por acción y por día después del día 5, acumulando mes a mes hasta registrar el pago.
+- Si el socio tiene créditos vigentes (activos, en mora o pendientes de desembolso) se muestra una tarjeta adicional con monto aprobado, cuota estimada y fecha objetivo de cierre (se recalcula si hay refinanciación) justo debajo del bloque de acciones/rendimientos.
 - `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
 - Historial con filtros por fecha, conceptos legibles, paginación AJAX y tarjetas compactas a dos columnas con badge de estado, monto a la derecha e identificador de movimiento más acceso al comprobante.
+- Incluye desembolsos de crédito como movimiento aprobado con enlace al contrato PDF y muestra las actualizaciones de datos como eventos sin monto con botón “Ver cambios” (abre modal con los campos editados). Los comprobantes/contratos se abren en pestaña nueva usando el endpoint seguro, evitando lightbox de terceros y errores 403.
 - `[lud_perfil_datos]`: captura y guarda beneficiario (cumplimiento estatutario art. 22).
 - `[lud_registro_socio]`: formulario de ingreso para nuevos socios, incluyendo PDF de identidad y datos KYC.
 - `[lud_retiro_voluntario]` (`LUD_Module_Retiros::render_formulario_retiro`):
@@ -80,6 +83,7 @@ Creación gestionada por `LUD_DB_Installer`:
 4. Deudor firma en `[lud_zona_deudor]`; el crédito pasa a `pendiente_tesoreria` con fecha de aprobación de deudor.
 5. Si en el paso 1 no había liquidez suficiente, la solicitud queda en `fila_liquidez` y se promueve automáticamente a `pendiente_tesoreria` en cuanto el cupo del fondo lo permite, respetando el orden de solicitud.
 6. Tesorería desembolsa, genera contrato PDF (si TCPDF está disponible) con huella forense y avanza estado.
+7. Se registra el desembolso como movimiento aprobado en el historial del socio, adjuntando el contrato firmado para descarga segura.
 
 ## Panel de Tesorería
 Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):
@@ -132,7 +136,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 
 ## Seguridad y privacidad
 - Bloqueo de acceso directo mediante `ABSPATH` en todos los archivos.
-- Comprobantes y firmas se almacenan en `uploads/fondo_seguro/` y se sirven solo vía `admin_post_lud_ver_comprobante`, validando permisos (`administrator`, `lud_manage_tesoreria`, `lud_view_tesoreria`).
+- Comprobantes y firmas se almacenan en `uploads/fondo_seguro/` y se sirven solo vía `admin_post_lud_ver_comprobante`, validando permisos (`administrator`, `lud_manage_tesoreria`, `lud_view_tesoreria`) o pertenencia del socio al archivo (propietario de la transacción o documento), evitando 403 y lightbox de constructores externos.
 - Validaciones de nonce en todos los formularios (`wp_verify_nonce` / `check_admin_referer`).
 - Sanitización de entradas (`sanitize_text_field`, `sanitize_email`, `wp_check_filetype_and_ext`, límites de tamaño de archivos) y control de rutas con `realpath`.
 - Reglas de negocio contra fraude: límites de pago (sin ahorro voluntario), obligatoriedad de cámara salvo excepciones, sanciones por mora, regla del 70% para refinanciar, verificación de liquidez antes de aprobar créditos.

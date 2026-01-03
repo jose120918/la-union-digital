@@ -16,6 +16,32 @@ class LUD_Module_Transacciones {
         add_shortcode( 'lud_reportar_pago', array( $this, 'render_form_pago' ) );
         add_action( 'admin_post_lud_procesar_pago', array( $this, 'procesar_pago' ) );
         add_action( 'admin_post_nopriv_lud_procesar_pago', array( $this, 'procesar_pago' ) ); 
+
+        // Comentario: aseguramos que la tabla de transacciones admita nuevos tipos informativos.
+        $this->asegurar_tipos_transaccion_extendidos();
+    }
+
+    /**
+     * Garantiza que el ENUM de la tabla de transacciones incluya los tipos de desembolso y auditoría.
+     */
+    private function asegurar_tipos_transaccion_extendidos() {
+        global $wpdb;
+        $tabla = "{$wpdb->prefix}fondo_transacciones";
+        $columna = $wpdb->get_row( $wpdb->prepare( "SHOW COLUMNS FROM $tabla LIKE %s", 'tipo' ) );
+        if ( ! $columna ) {
+            return;
+        }
+
+        $tiene_desembolso = strpos( $columna->Type, 'desembolso_credito' ) !== false;
+        $tiene_actualizacion = strpos( $columna->Type, 'actualizacion_datos' ) !== false;
+
+        if ( $tiene_desembolso && $tiene_actualizacion ) {
+            return;
+        }
+
+        $wpdb->query(
+            "ALTER TABLE $tabla MODIFY tipo ENUM('pago_consolidado','aporte','cuota_credito','multa','gasto_operativo','ajuste_redondeo','desembolso_credito','actualizacion_datos') NOT NULL"
+        );
     }
 
     /**

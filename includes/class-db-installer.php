@@ -66,7 +66,7 @@ class LUD_DB_Installer {
         $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_transacciones (
             id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT(20) UNSIGNED NOT NULL,
-            tipo ENUM('pago_consolidado','aporte','cuota_credito','multa','gasto_operativo','ajuste_redondeo') NOT NULL,
+            tipo ENUM('pago_consolidado','aporte','cuota_credito','multa','gasto_operativo','ajuste_redondeo','desembolso_credito','actualizacion_datos') NOT NULL,
             monto DECIMAL(15,2) NOT NULL,
             metodo_pago VARCHAR(50) DEFAULT 'efectivo',
             comprobante_url VARCHAR(255) NULL,

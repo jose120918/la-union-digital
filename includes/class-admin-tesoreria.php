@@ -873,9 +873,8 @@ class LUD_Admin_Tesoreria {
                         <?php
                         // Comentario: Si existe un archivo de comprobante, se muestra enlace directo al upload seguro.
                         if ( !empty($t->comprobante_url) ) {
-                            $uploads = wp_upload_dir();
-                            $ruta_segura = trailingslashit($uploads['baseurl']) . 'fondo_seguro/' . $t->comprobante_url;
-                            echo '<a href="'.esc_url($ruta_segura).'" target="_blank">Ver archivo</a>';
+                            $ruta_segura = admin_url( 'admin-post.php?action=lud_ver_comprobante&file=' . rawurlencode( $t->comprobante_url ) );
+                            echo '<a href="'.esc_url($ruta_segura).'" target="_blank" rel="noopener">Ver archivo</a>';
                         } else {
                             echo '-';
                         }
@@ -1460,6 +1459,26 @@ class LUD_Admin_Tesoreria {
         $adjunto_ruta = $pdf_name ? WP_CONTENT_DIR . "/uploads/fondo_seguro/contratos/$pdf_name" : '';
         do_action( 'lud_evento_credito_decision', $credito->user_id, 'activo', $id, $entrega, $adjunto_ruta );
 
+        // Registrar el desembolso en el historial del socio con contrato firmado.
+        $nombre_comprobante = $pdf_name ? 'contratos/' . sanitize_file_name( $pdf_name ) : '';
+        $detalle_desembolso = 'Desembolso de crédito #' . $id . ' (' . $credito->tipo_credito . ')';
+
+        $wpdb->insert(
+            $wpdb->prefix . 'fondo_transacciones',
+            array(
+                'user_id' => $credito->user_id,
+                'tipo' => 'desembolso_credito',
+                'monto' => $credito_actualizado ? floatval( $credito_actualizado->monto_aprobado ) : floatval( $credito->monto_solicitado ),
+                'estado' => 'aprobado',
+                'detalle' => $detalle_desembolso,
+                'comprobante_url' => $nombre_comprobante,
+                'aprobado_por' => get_current_user_id(),
+                'fecha_registro' => current_time( 'mysql' ),
+                'fecha_aprobacion' => current_time( 'mysql' )
+            ),
+            array( '%d', '%s', '%f', '%s', '%s', '%s', '%d', '%s', '%s' )
+        );
+
         wp_redirect(admin_url('admin.php?page=lud-tesoreria&msg=desembolsado'));
         exit;
     }
@@ -1852,11 +1871,11 @@ class LUD_Admin_Tesoreria {
                 $log_cambios[] = "[BLOQUEO ACTIVADO POR 1 AÑO]";
             }
 
-            $detalle_log = "ADMIN EDICIÓN (" . wp_get_current_user()->display_name . "): " . implode(', ', $log_cambios);
+            $detalle_log = "Actualización de datos (" . wp_get_current_user()->display_name . "): " . implode(', ', $log_cambios);
             
             $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
                 'user_id' => $user_id,
-                'tipo' => 'aporte', // Usamos un tipo existente inofensivo
+                'tipo' => 'actualizacion_datos',
                 'monto' => 0,
                 'estado' => 'aprobado',
                 'detalle' => $detalle_log,
