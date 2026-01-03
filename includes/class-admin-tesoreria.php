@@ -31,6 +31,7 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_responder_retiro', array( $this, 'procesar_respuesta_retiro' ) );
         add_action( 'admin_post_lud_guardar_config_correo', array( $this, 'procesar_config_correos' ) );
         add_action( 'admin_post_lud_enviar_test_correo', array( $this, 'procesar_test_correo' ) );
+        add_action( 'admin_post_lud_guardar_asistencia', array( $this, 'procesar_guardado_asistencia' ) );
     }
 
     /**
@@ -62,11 +63,15 @@ class LUD_Admin_Tesoreria {
         $active_socio = ($view == 'buscar_socio' || $view == 'detalle_socio') ? 'nav-tab-active' : '';
         $active_hist = ($view == 'historial_intereses') ? 'nav-tab-active' : '';
         $active_config = ($view == 'configuracion_fondo') ? 'nav-tab-active' : '';
+        $active_asistencia = ($view == 'control_asistencia') ? 'nav-tab-active' : '';
         
         echo '<nav class="nav-tab-wrapper">';
         echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'" title="Ayuda: Aquí ves el dinero total en caja, apruebas pagos y desembolsas créditos.">📊 Tablero Principal</a>';
         echo '<a href="?page=lud-tesoreria&view=buscar_socio" class="nav-tab '.$active_socio.'" title="Ayuda: Aquí buscas a un socio para ver su historia completa.">👥 Directorio y Consultas</a>';
         echo '<a href="?page=lud-tesoreria&view=historial_intereses" class="nav-tab '.$active_hist.'" title="Ayuda: Lista de los dineros entregados en efectivo cada Diciembre.">📜 Historial Intereses Pagados</a>';
+        if ( current_user_can( 'lud_manage_tesoreria' ) ) {
+            echo '<a href="?page=lud-tesoreria&view=control_asistencia" class="nav-tab '.$active_asistencia.'" title="Marcar asistencia a asambleas y generar multas automáticas.">🗓️ Control de Asistencia</a>';
+        }
         if ( current_user_can( 'manage_options' ) ) {
             echo '<a href="?page=lud-tesoreria&view=configuracion_fondo" class="nav-tab '.$active_config.'" title="Configura plantillas de correo y pruebas SMTP.">⚙️ Configuración del Fondo</a>';
         }
@@ -83,6 +88,8 @@ class LUD_Admin_Tesoreria {
             $this->render_historial_intereses();
         } elseif ( $view == 'editar_socio' ) {
             $this->render_editor_socio();
+        } elseif ( $view == 'control_asistencia' ) {
+            $this->render_control_asistencia();
         } elseif ( $view == 'configuracion_fondo' && current_user_can( 'manage_options' ) ) {
             $this->render_configuracion_fondo();
         }
@@ -110,16 +117,17 @@ class LUD_Admin_Tesoreria {
                 
                 // 1. Obtener valor anterior para el log
                 $anteriores = $wpdb->get_var("SELECT numero_acciones FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = {$user->ID}");
+                $cantidad_aplicar = max( 0, min( 10, intval( $programado['cantidad'] ) ) ); // Comentario: respetar límite estatutario de 10.
                 
                 // 2. Aplicar el cambio en la Tabla Maestra
                 $wpdb->update(
                     "{$wpdb->prefix}fondo_cuentas",
-                    ['numero_acciones' => intval($programado['cantidad'])],
+                    ['numero_acciones' => $cantidad_aplicar],
                     ['user_id' => $user->ID]
                 );
 
                 // 3. Registrar en Historial (Log de Auditoría)
-                $detalle = "SISTEMA: Cambio de acciones efectivo ($anteriores -> {$programado['cantidad']}). Motivo: " . $programado['motivo'];
+                $detalle = "SISTEMA: Cambio de acciones efectivo ($anteriores -> {$cantidad_aplicar}). Motivo: " . $programado['motivo'];
                 $wpdb->insert("{$wpdb->prefix}fondo_transacciones", [
                     'user_id' => $user->ID, 'tipo' => 'aporte', 'monto' => 0, 'estado' => 'aprobado',
                     'detalle' => $detalle, 'aprobado_por' => get_current_user_id(), 'fecha_registro' => current_time('mysql')
@@ -786,7 +794,8 @@ class LUD_Admin_Tesoreria {
                     
                     <div>
                         <label style="font-weight:bold;">Acciones Actuales:</label>
-                        <input type="number" name="nuevas_acciones" value="<?php echo $cuenta->numero_acciones; ?>" min="0" max="100" style="width:80px; text-align:center;">
+                        <input type="number" name="nuevas_acciones" value="<?php echo $cuenta->numero_acciones; ?>" min="0" max="10" style="width:80px; text-align:center;" aria-describedby="lud-acciones-ayuda">
+                        <small id="lud-acciones-ayuda" style="display:block; color:#555;">Máximo 10 acciones por estatutos.</small>
                     </div>
                     
                     <div style="flex-grow:1;">
@@ -899,6 +908,68 @@ class LUD_Admin_Tesoreria {
                 <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+        <?php
+    }
+
+    /**
+     * Vista para marcar asistencia a asambleas y generar multas por inasistencia.
+     */
+    private function render_control_asistencia() {
+        if ( ! current_user_can( 'lud_manage_tesoreria' ) ) {
+            wp_die( 'Acceso denegado' );
+        }
+
+        global $wpdb;
+        $socios = $wpdb->get_results("
+            SELECT u.ID, u.display_name, u.user_email
+            FROM {$wpdb->users} u
+            JOIN {$wpdb->prefix}fondo_cuentas c ON u.ID = c.user_id
+            WHERE c.estado_socio = 'activo'
+            ORDER BY u.display_name ASC
+        ");
+        $fecha_asamblea = isset( $_GET['fecha_asamblea'] ) ? sanitize_text_field( $_GET['fecha_asamblea'] ) : date( 'Y-m-d' );
+
+        if ( isset( $_GET['msg'] ) && $_GET['msg'] === 'asistencia_guardada' ) {
+            echo '<div class="notice notice-success"><p>✅ Asistencia registrada y multas de inasistencia generadas.</p></div>';
+        }
+        ?>
+        <div class="lud-card">
+            <h3>🗓️ Control de Asistencia</h3>
+            <p>Marca los socios que asistieron a la asamblea. Los no marcados recibirán una multa automática de $10.000 por "Inasistencia Asamblea".</p>
+
+            <form method="POST" action="<?php echo admin_url( 'admin-post.php' ); ?>">
+                <input type="hidden" name="action" value="lud_guardar_asistencia">
+                <?php wp_nonce_field( 'lud_asistencia_nonce', 'security' ); ?>
+
+                <label class="lud-label" for="fecha_asamblea">Fecha de la asamblea</label>
+                <input type="date" id="fecha_asamblea" name="fecha_asamblea" class="lud-input" value="<?php echo esc_attr( $fecha_asamblea ); ?>" required style="max-width:220px;">
+
+                <table class="widefat striped" style="margin-top:15px;">
+                    <thead><tr><th>Asistió</th><th>Socio</th><th>Correo</th></tr></thead>
+                    <tbody>
+                        <?php if ( empty( $socios ) ): ?>
+                            <tr><td colspan="3">No hay socios activos.</td></tr>
+                        <?php else: ?>
+                            <?php foreach ( $socios as $s ): ?>
+                                <tr>
+                                    <td style="width:90px;">
+                                        <label style="display:flex; align-items:center; gap:6px;">
+                                            <input type="checkbox" name="socio_presente[]" value="<?php echo $s->ID; ?>" checked>
+                                            <span>Presente</span>
+                                        </label>
+                                    </td>
+                                    <td><?php echo esc_html( $s->display_name ); ?></td>
+                                    <td><?php echo esc_html( $s->user_email ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+
+                <p style="margin-top:15px; color:#555;">Tip: deja desmarcados a los ausentes antes de guardar.</p>
+                <button type="submit" class="button button-primary button-hero">💾 Guardar asistencia</button>
+            </form>
         </div>
         <?php
     }
@@ -1399,6 +1470,14 @@ class LUD_Admin_Tesoreria {
         $user_id = intval($_POST['user_id']);
         $nuevas = intval($_POST['nuevas_acciones']);
         $motivo = sanitize_text_field($_POST['motivo_cambio']);
+
+        // Comentario: límite duro de 10 acciones por estatutos.
+        if ( $nuevas > 10 ) {
+            wp_die( '<div style="padding:20px; font-family:sans-serif;"><h2>⚠️ Límite de acciones</h2><p>Un socio no puede tener más de 10 acciones.</p></div>' );
+        }
+        if ( $nuevas < 0 ) {
+            $nuevas = 0;
+        }
         
         // Calcular el 1 del próximo mes
         $fecha_efectiva = date('Y-m-01', strtotime('first day of next month'));
@@ -1686,6 +1765,61 @@ class LUD_Admin_Tesoreria {
 
         wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=datos_actualizados") );
         exit;
+    }
+
+    /**
+     * Procesa la marcación de asistencia y genera multas para ausentes.
+     */
+    public function procesar_guardado_asistencia() {
+        if ( ! current_user_can( 'lud_manage_tesoreria' ) ) wp_die( 'Sin permisos' );
+        check_admin_referer( 'lud_asistencia_nonce', 'security' );
+
+        global $wpdb;
+        $fecha_asamblea = ! empty( $_POST['fecha_asamblea'] ) ? sanitize_text_field( $_POST['fecha_asamblea'] ) : date( 'Y-m-d' );
+        $socios_presentes = isset( $_POST['socio_presente'] ) ? array_map( 'intval', $_POST['socio_presente'] ) : array();
+
+        $socios_activos = $wpdb->get_col( "SELECT user_id FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'" );
+
+        foreach ( $socios_activos as $socio_id ) {
+            if ( in_array( $socio_id, $socios_presentes ) ) {
+                continue; // Comentario: asistió, no se genera multa.
+            }
+
+            if ( $this->existe_multa_inasistencia( $socio_id, $fecha_asamblea ) ) {
+                continue; // Comentario: ya existe multa registrada para esa fecha.
+            }
+
+            $wpdb->insert(
+                $wpdb->prefix . 'fondo_transacciones',
+                array(
+                    'user_id' => $socio_id,
+                    'tipo' => 'multa',
+                    'monto' => 10000,
+                    'metodo_pago' => 'pendiente_cobro',
+                    'estado' => 'pendiente',
+                    'detalle' => 'Inasistencia Asamblea (' . $fecha_asamblea . ')',
+                    'fecha_registro' => current_time( 'mysql' )
+                )
+            );
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=control_asistencia&msg=asistencia_guardada' ) );
+        exit;
+    }
+
+    /**
+     * Verifica si ya existe una multa de inasistencia para la fecha indicada.
+     */
+    private function existe_multa_inasistencia( $user_id, $fecha_asamblea ) {
+        global $wpdb;
+        $like = '%' . $wpdb->esc_like( 'Inasistencia Asamblea (' . $fecha_asamblea . ')' ) . '%';
+        $conteo = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = %d AND tipo = 'multa' AND detalle LIKE %s",
+            $user_id,
+            $like
+        ) );
+
+        return $conteo > 0;
     }
 
     /**
