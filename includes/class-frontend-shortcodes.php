@@ -218,61 +218,29 @@ class LUD_Frontend_Shortcodes {
                 </div>
             </div>
             <?php if ( ! empty( $resumen_creditos ) ): ?>
-            <div class="lud-card lud-accordion-credito" style="margin-top:6px; padding:10px 12px;">
-                <button type="button" class="lud-accordion-toggle" aria-expanded="false">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="font-weight:700; color:#1a237e;"><?php echo count( $resumen_creditos ) > 1 ? 'Créditos vigentes' : 'Crédito vigente'; ?></span>
-                        <span class="lud-badge pendiente">En curso</span>
-                    </div>
-                    <span class="lud-accordion-caret" aria-hidden="true">▼</span>
-                </button>
-                <div class="lud-accordion-panel" style="display:none; margin-top:8px;">
-                    <p style="color:#4a4a4a; font-size:0.88rem; margin:0 0 8px;">Mostramos monto aprobado, cuota estimada y fecha objetivo de cierre (puede ajustarse si hay refinanciación).</p>
-                    <?php foreach ( $resumen_creditos as $cred ): ?>
-                        <div style="background:#f7f9fc; border:1px solid #e0e6f6; padding:10px 12px; border-radius:8px; margin-bottom:8px;">
-                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-                                <div>
-                                    <div style="font-weight:700; color:#1a237e;">Crédito #<?php echo $cred['id']; ?> · <?php echo ucfirst( $cred['tipo'] ); ?></div>
-                                    <small style="color:#5c6bc0;">Estado: <?php echo ucfirst( $cred['estado'] ); ?></small>
-                                </div>
-                                <div style="text-align:right;">
-                                    <span style="display:block; font-size:0.8rem; color:#666;">Monto aprobado</span>
-                                    <strong style="font-size:1.05rem; color:#1b5e20;">$ <?php echo number_format( $cred['monto'], 0, ',', '.' ); ?></strong>
-                                </div>
-                            </div>
-                            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; font-size:0.9rem;">
-                                <div style="color:#2e7d32; font-weight:600;">Cuota: $ <?php echo number_format( $cred['cuota'], 0, ',', '.' ); ?></div>
-                                <div style="color:#37474f;">Fin proyectado: <?php echo date_i18n( 'd M Y', strtotime( $cred['fecha_fin'] ) ); ?></div>
-                            </div>
+            <div class="lud-card" style="margin-top:12px; padding:10px 12px; background:#f7f9fc; border:1px solid #e0e6f6; border-radius:10px;">
+                <?php foreach ( $resumen_creditos as $cred ): ?>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                        <div>
+                            <div style="font-weight:700; color:#1a237e;">Crédito #<?php echo $cred['id']; ?> · <?php echo ucfirst( $cred['tipo'] ); ?></div>
+                            <small style="color:#5c6bc0;">Estado: <?php echo ucfirst( $cred['estado'] ); ?></small>
                         </div>
-                    <?php endforeach; ?>
-                </div>
+                        <div style="text-align:right;">
+                            <span style="display:block; font-size:0.82rem; color:#666;">Monto aprobado</span>
+                            <strong style="font-size:1.05rem; color:#1b5e20;">$ <?php echo number_format( $cred['monto'], 0, ',', '.' ); ?></strong>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; font-size:0.9rem; align-items:center;">
+                        <span style="color:#2e7d32; font-weight:700;">Cuota: $ <?php echo number_format( $cred['cuota'], 0, ',', '.' ); ?></span>
+                        <span style="color:#37474f;">Fin proyectado: <?php echo date_i18n( 'd M Y', strtotime( $cred['fecha_fin'] ) ); ?></span>
+                    </div>
+                    <?php if ( count( $resumen_creditos ) > 1 ): ?>
+                        <hr style="border:0; border-top:1px dashed #d4ddf2; margin:10px 0;">
+                    <?php endif; ?>
+                <?php endforeach; ?>
             </div>
             <?php endif; ?>
         </div>
-        <script>
-            // Comentario: manejamos la apertura/cierre del acordeón de crédito vigente para mantener la UI compacta.
-            document.addEventListener('DOMContentLoaded', function(){
-                const acordiones = document.querySelectorAll('.lud-accordion-credito .lud-accordion-toggle');
-                acordiones.forEach(function(boton){
-                    boton.addEventListener('click', function(){
-                        const panel = boton.nextElementSibling;
-                        const abierto = boton.getAttribute('aria-expanded') === 'true';
-                        boton.setAttribute('aria-expanded', abierto ? 'false' : 'true');
-                        panel.style.display = abierto ? 'none' : 'block';
-                        const caret = boton.querySelector('.lud-accordion-caret');
-                        if (caret) caret.textContent = abierto ? '▼' : '▲';
-                    });
-                });
-            });
-        </script>
-        <style>
-            /* Comentario: acordeón minimalista para crédito vigente sin ocupar espacio extra. */
-            .lud-accordion-credito { background:#f9fbff; border:1px solid #e5eaf5; }
-            .lud-accordion-toggle { width:100%; background:transparent; border:none; padding:6px 4px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; }
-            .lud-accordion-toggle:focus { outline:2px solid #c5cae9; }
-            .lud-accordion-caret { color:#5c6bc0; font-size:0.9rem; }
-        </style>
         <?php
         return ob_get_clean();
     }
