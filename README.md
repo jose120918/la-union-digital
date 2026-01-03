@@ -57,9 +57,9 @@ Creación gestionada por `LUD_DB_Installer`:
   - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
 - `[lud_resumen_ahorro]`: tarjeta de ahorro con estado “Al día/Pendiente”, deudas calculadas y rendimientos anuales.
-- En “Mi Ahorro” se desglosan periodos en mora con días de retraso, se muestra el contador total de días/meses y la fecha de incorporación al fondo.
+- En “Mi Ahorro” se desglosan las deudas por concepto (ahorro, administración, intereses, mora, multas, otros) con meses vencidos, valor unitario y subtotal, junto con la fecha de incorporación al fondo.
 - `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
-- Historial con filtros por fecha, conceptos legibles, paginación AJAX, columna de acciones para ver comprobantes y carga incremental si hay más de 3 ítems.
+- Historial con filtros por fecha, conceptos legibles, paginación AJAX y cards modernas por movimiento con badge de estado, monto destacado y acceso rápido al comprobante.
 - `[lud_perfil_datos]`: captura y guarda beneficiario (cumplimiento estatutario art. 22).
 - `[lud_registro_socio]`: formulario de ingreso para nuevos socios, incluyendo PDF de identidad y datos KYC.
 - `[lud_retiro_voluntario]` (`LUD_Module_Retiros::render_formulario_retiro`):
@@ -97,6 +97,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - Programación de cambios de acciones aplicados automáticamente en `ejecutar_cambios_programados`.
   - Aprobación o rechazo de registros entrantes (`lud_aprobar_registro`, `lud_rechazar_registro`).
   - Entregas de secretaría (`lud_entregar_secretaria`) para reflejar salida de caja de ese concepto.
+- **Presidencia** (`view=presidencia`): panel exclusivo para aprobar o rechazar solicitudes de ingreso pendientes, con motivo obligatorio al rechazar, historial de decisiones y acceso al PDF cargado por el solicitante.
 - **Control de asistencia** (`view=control_asistencia`): pestaña para marcar presentes/ausentes en la asamblea; los ausentes reciben una multa pendiente de $10.000 con detalle “Inasistencia Asamblea (fecha)”.
 - **Historial de intereses:** consulta de utilidades liquidadas (`view=historial_intereses`).
 - **Configuración del fondo (solo administradores):** pestaña “⚙️ Configuración del Fondo” con dos bloques:
@@ -108,10 +109,11 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 
 ## Reglas y límites vigentes
 - Máximo 10 acciones por socio: la UI y el backend bloquean cantidades superiores al programar cambios desde Tesorería.
-- Límite de 36 socios activos: el registro público muestra “Cupos llenos” y el procesamiento server-side impide nuevas altas cuando se alcanza ese número.
+- Admisiones sin límite técnico de cupos; todas las solicitudes entran como “Pendiente” hasta ser aprobadas o rechazadas por Presidencia.
 - Refinanciación única por crédito: si un crédito ya fue refinanciado, el sistema bloquea nuevos intentos y marca el origen en `datos_entrega`.
 - Créditos corrientes no se radican en diciembre (Art. 8.1); solo se permiten ágiles con aviso de entrega diferida.
 - El score de pago (0-100) prioriza la cola de liquidez y se muestra al socio antes de radicar la solicitud.
+- Solicitud de retiro: se bloquea el formulario si el socio no está paz y salvo (deuda administrativa o créditos pendientes).
 
 ## Notificaciones automáticas y correos
 - Motor centralizado en `LUD_Notificaciones` con plantilla HTML unificada (saludo obligatorio con nombre + tipo/número de identificación).

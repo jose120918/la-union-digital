@@ -55,6 +55,7 @@ class LUD_Admin_Tesoreria {
         $this->ejecutar_cambios_programados();
 
         $view = isset($_GET['view']) ? $_GET['view'] : 'dashboard';
+        $es_presidente = $this->usuario_es_presidencia();
         
         echo '<div class="wrap">';
         echo '<h1 class="wp-heading-inline" style="margin-bottom:20px;">Gestión de Tesorería La Unión</h1>';
@@ -137,6 +138,15 @@ class LUD_Admin_Tesoreria {
                 delete_user_meta($user->ID, 'lud_acciones_programadas');
             }
         }
+    }
+
+    /**
+     * Determina si el usuario actual tiene rol de presidencia o es administrador.
+     */
+    private function usuario_es_presidencia() {
+        $usuario = wp_get_current_user();
+        $roles = (array) $usuario->roles;
+        return in_array( 'lud_presidente', $roles ) || current_user_can( 'manage_options' );
     }
 
     // --- VISTA 1: TABLERO GENERAL ---
@@ -471,10 +481,11 @@ class LUD_Admin_Tesoreria {
                                     <?php wp_nonce_field('aprobar_socio_'.$ns->id, 'security'); ?>
                                     <button class="button button-primary button-small">Aprobar</button>
                                 </form>
-                                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Rechazar solicitud?');">
+                                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Rechazar solicitud?');" style="display:flex; flex-direction:column; gap:4px;">
                                     <input type="hidden" name="action" value="lud_rechazar_registro">
                                     <input type="hidden" name="cuenta_id" value="<?php echo $ns->id; ?>">
                                     <?php wp_nonce_field('rechazar_socio_'.$ns->id, 'security'); ?>
+                                    <input type="text" name="motivo_rechazo" class="lud-input" placeholder="Motivo de rechazo" required>
                                     <button class="button button-link-delete button-small">Rechazar</button>
                                 </form>
                             </div>
