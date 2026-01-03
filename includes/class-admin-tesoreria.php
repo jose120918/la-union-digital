@@ -29,6 +29,8 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_guardar_edicion_socio', array( $this, 'procesar_edicion_socio' ) );
         add_action( 'admin_post_lud_entregar_secretaria', array( $this, 'procesar_entrega_secretaria' ) );
         add_action( 'admin_post_lud_responder_retiro', array( $this, 'procesar_respuesta_retiro' ) );
+        add_action( 'admin_post_lud_guardar_config_correo', array( $this, 'procesar_config_correos' ) );
+        add_action( 'admin_post_lud_enviar_test_correo', array( $this, 'procesar_test_correo' ) );
     }
 
     /**
@@ -59,11 +61,15 @@ class LUD_Admin_Tesoreria {
         $active_dash = ($view == 'dashboard') ? 'nav-tab-active' : '';
         $active_socio = ($view == 'buscar_socio' || $view == 'detalle_socio') ? 'nav-tab-active' : '';
         $active_hist = ($view == 'historial_intereses') ? 'nav-tab-active' : '';
+        $active_config = ($view == 'configuracion_fondo') ? 'nav-tab-active' : '';
         
         echo '<nav class="nav-tab-wrapper">';
         echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'" title="Ayuda: Aquí ves el dinero total en caja, apruebas pagos y desembolsas créditos.">📊 Tablero Principal</a>';
         echo '<a href="?page=lud-tesoreria&view=buscar_socio" class="nav-tab '.$active_socio.'" title="Ayuda: Aquí buscas a un socio para ver su historia completa.">👥 Directorio y Consultas</a>';
         echo '<a href="?page=lud-tesoreria&view=historial_intereses" class="nav-tab '.$active_hist.'" title="Ayuda: Lista de los dineros entregados en efectivo cada Diciembre.">📜 Historial Intereses Pagados</a>';
+        if ( current_user_can( 'manage_options' ) ) {
+            echo '<a href="?page=lud-tesoreria&view=configuracion_fondo" class="nav-tab '.$active_config.'" title="Configura plantillas de correo y pruebas SMTP.">⚙️ Configuración del Fondo</a>';
+        }
         echo '</nav>';
         echo '<br>';
 
@@ -77,6 +83,8 @@ class LUD_Admin_Tesoreria {
             $this->render_historial_intereses();
         } elseif ( $view == 'editar_socio' ) {
             $this->render_editor_socio();
+        } elseif ( $view == 'configuracion_fondo' && current_user_can( 'manage_options' ) ) {
+            $this->render_configuracion_fondo();
         }
         echo '</div>';
     }
@@ -214,6 +222,7 @@ class LUD_Admin_Tesoreria {
             WHERE (c.fecha_ultimo_aporte < '$fecha_corte_mora' AND c.estado_socio = 'activo')
                OR (cr.id IS NOT NULL)
             GROUP BY c.user_id
+            ORDER BY u.display_name ASC
         ");
 
         // 6. Métricas de cartera y operación para Presidencia/Secretaría
@@ -230,6 +239,16 @@ class LUD_Admin_Tesoreria {
 
         $socios_activos = intval( $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'") );
         $socios_morosos = count($morosos);
+
+        // Histórico entregas secretaría agrupado por mes-año (últimos 6 meses)
+        $historico_secretaria = $wpdb->get_results("
+            SELECT DATE_FORMAT(fecha_gasto, '%Y-%m') as periodo, SUM(monto) as total
+            FROM {$wpdb->prefix}fondo_gastos
+            WHERE categoria = 'secretaria'
+            GROUP BY periodo
+            ORDER BY periodo DESC
+            LIMIT 6
+        ");
 
         // Solicitudes de retiro (pendientes para decisión)
         $retiros_pendientes = $wpdb->get_results(
@@ -303,21 +322,30 @@ class LUD_Admin_Tesoreria {
                 <small><?php echo ($indicador_meta == 0) ? '✅ Meta Cumplida' : 'Falta recaudar en aportes'; ?></small>
             </div>
 
-            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Muestra cuánto dinero de Secretaría se ha recaudado y falta entregar en el mes.">
-                <h4 style="margin:0; color:#e65100;">📂 Caja Secretaría (Mes)</h4>
-                <div style="font-size:1.5rem; font-weight:bold; color:#ef6c00;">$ <?php echo number_format($pendiente_entrega_sec, 0, ',', '.'); ?></div>
-                
-                <?php if($pendiente_entrega_sec > 0 && $puede_editar): ?>
-                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" onsubmit="return confirm('¿Confirmas que entregas el dinero FÍSICO a la secretaria? \n\nEsto creará un gasto y descontará el dinero de la Caja Mayor.');">
-                        <input type="hidden" name="action" value="lud_entregar_secretaria">
-                        <input type="hidden" name="monto" value="<?php echo $pendiente_entrega_sec; ?>">
-                        <?php wp_nonce_field('lud_pay_sec', 'security'); ?>
-                        <button class="button button-small" style="margin-top:5px; width:100%;">🤝 Confirmar Entrega</button>
-                    </form>
-                <?php elseif($pendiente_entrega_sec <= 0): ?>
-                    <small style="color:#27ae60;">✅ Al día (Entregado)</small>
-                <?php endif; ?>
+            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Solo muestra lo recaudado para Secretaría en el mes en curso.">
+                <h4 style="margin:0; color:#e65100;">📂 Caja Secretaría (Recaudo Mes)</h4>
+                <div style="font-size:1.5rem; font-weight:bold; color:#ef6c00;">$ <?php echo number_format($recaudo_sec_mes, 0, ',', '.'); ?></div>
+                <small>Corresponde a las cuotas de secretaría registradas este mes.</small>
             </div>
+        </div>
+
+        <div class="lud-card" style="border-left:4px solid #546e7a; margin-bottom:30px;" title="Histórico de entregas efectuadas a Secretaría por mes.">
+            <h3 style="margin-top:0;">📑 Histórico Entregas Secretaría</h3>
+            <?php if ( empty( $historico_secretaria ) ): ?>
+                <p style="color:#666;">Sin registros de entregas.</p>
+            <?php else: ?>
+                <table class="widefat striped">
+                    <thead><tr><th>Mes</th><th>Total entregado</th></tr></thead>
+                    <tbody>
+                    <?php foreach ( $historico_secretaria as $fila ): ?>
+                        <tr>
+                            <td><?php echo esc_html( $fila->periodo ); ?></td>
+                            <td style="font-weight:bold; color:#2c3e50;">$ <?php echo number_format( $fila->total, 0, ',', '.' ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
 
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px; margin-bottom:30px;">
@@ -367,59 +395,6 @@ class LUD_Admin_Tesoreria {
                 ?>
                 <small><?php echo $socios_morosos; ?> con alerta en cartera: <?php echo esc_html($texto_morosos); ?></small>
             </div>
-        </div>
-
-        <div class="lud-card" style="border-left:5px solid #8e44ad; margin-bottom:30px;" title="Ayuda: Aprobar o rechazar retiros voluntarios solicitados por los socios.">
-            <h3>📤 Solicitudes de Retiro</h3>
-            <?php if ( empty( $retiros_pendientes ) ): ?>
-                <p style="color:#27ae60;">✅ No hay retiros pendientes de decisión.</p>
-            <?php else: ?>
-                <table class="widefat striped">
-                    <thead>
-                        <tr>
-                            <th>Socio</th>
-                            <th>Monto estimado</th>
-                            <th>Motivo socio</th>
-                            <th>Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ( $retiros_pendientes as $r ): ?>
-                        <tr>
-                            <td>
-                                <strong><?php echo esc_html( $r->display_name ); ?></strong><br>
-                                <small>Solicitado: <?php echo date_i18n( 'd/M H:i', strtotime( $r->fecha_solicitud ) ); ?></small>
-                            </td>
-                            <td style="color:#2c3e50; font-weight:bold;">
-                                $ <?php echo number_format( $r->monto_estimado, 0, ',', '.' ); ?>
-                            </td>
-                            <td style="max-width:260px;"><?php echo nl2br( esc_html( $r->detalle ) ); ?></td>
-                            <td>
-                                <?php if ( $puede_editar ): ?>
-                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="margin-bottom:8px;">
-                                        <input type="hidden" name="action" value="lud_responder_retiro">
-                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
-                                        <input type="hidden" name="decision" value="aprobado">
-                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
-                                        <button class="button button-primary" style="width:100%;" title="Aprueba el retiro para entregarlo en la próxima reunión con liquidez.">Aprobar</button>
-                                    </form>
-                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
-                                        <input type="hidden" name="action" value="lud_responder_retiro">
-                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
-                                        <input type="hidden" name="decision" value="rechazado">
-                                        <textarea name="motivo" rows="2" style="width:100%; margin-bottom:6px;" placeholder="Motivo de rechazo (obligatorio)" required></textarea>
-                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
-                                        <button class="button button-link-delete" style="width:100%; color:#c0392b;" title="Requiere escribir el motivo para notificar a la asamblea.">Rechazar</button>
-                                    </form>
-                                <?php else: ?>
-                                    <small>Solo lectura.</small>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php endif; ?>
         </div>
 
         <?php if ( !empty($morosos) ): ?>
@@ -573,6 +548,59 @@ class LUD_Admin_Tesoreria {
                 <?php endif; ?>
             </div>
         </div>
+
+        <div class="lud-card" style="border-left:5px solid #8e44ad; margin-bottom:30px;" title="Ayuda: Aprobar o rechazar retiros voluntarios solicitados por los socios.">
+            <h3>📤 Solicitudes de Retiro</h3>
+            <?php if ( empty( $retiros_pendientes ) ): ?>
+                <p style="color:#27ae60;">✅ No hay retiros pendientes de decisión.</p>
+            <?php else: ?>
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th>Socio</th>
+                            <th>Monto estimado</th>
+                            <th>Motivo socio</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $retiros_pendientes as $r ): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo esc_html( $r->display_name ); ?></strong><br>
+                                <small>Solicitado: <?php echo date_i18n( 'd/M H:i', strtotime( $r->fecha_solicitud ) ); ?></small>
+                            </td>
+                            <td style="color:#2c3e50; font-weight:bold;">
+                                $ <?php echo number_format( $r->monto_estimado, 0, ',', '.' ); ?>
+                            </td>
+                            <td style="max-width:260px;"><?php echo nl2br( esc_html( $r->detalle ) ); ?></td>
+                            <td>
+                                <?php if ( $puede_editar ): ?>
+                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="margin-bottom:8px;">
+                                        <input type="hidden" name="action" value="lud_responder_retiro">
+                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
+                                        <input type="hidden" name="decision" value="aprobado">
+                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
+                                        <button class="button button-primary" style="width:100%;" title="Aprueba el retiro para entregarlo en la próxima reunión con liquidez.">Aprobar</button>
+                                    </form>
+                                    <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
+                                        <input type="hidden" name="action" value="lud_responder_retiro">
+                                        <input type="hidden" name="retiro_id" value="<?php echo intval( $r->id ); ?>">
+                                        <input type="hidden" name="decision" value="rechazado">
+                                        <textarea name="motivo" rows="2" style="width:100%; margin-bottom:6px;" placeholder="Motivo de rechazo (obligatorio)" required></textarea>
+                                        <?php wp_nonce_field( 'lud_responder_retiro_' . $r->id, 'security' ); ?>
+                                        <button class="button button-link-delete" style="width:100%; color:#c0392b;" title="Requiere escribir el motivo para notificar a la asamblea.">Rechazar</button>
+                                    </form>
+                                <?php else: ?>
+                                    <small>Solo lectura.</small>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </div>
         <?php
     }
 
@@ -665,6 +693,7 @@ class LUD_Admin_Tesoreria {
         
         $tx_module = new LUD_Module_Transacciones(); 
         $deuda_info = $tx_module->calcular_deuda_usuario($user_id);
+        $estado_general = ($deuda_info['total_admin'] + $deuda_info['creditos'] > 0) ? 'En Mora' : 'Al Día';
 
         // Verificar si hay cambio programado
         $cambio_pendiente = get_user_meta($user_id, 'lud_acciones_programadas', true);
@@ -681,10 +710,16 @@ class LUD_Admin_Tesoreria {
                 </div>
                 <br>
                 <table style="width:100%; text-align:left;">
+                    <tr><th>Documento:</th><td><?php echo esc_html($cuenta->tipo_documento . ' ' . $cuenta->numero_documento); ?></td></tr>
+                    <tr><th>Correo:</th><td><?php echo esc_html($user->user_email); ?></td></tr>
+                    <tr><th>Teléfono:</th><td><?php echo esc_html($cuenta->telefono_contacto); ?></td></tr>
+                    <tr><th>Dirección:</th><td><?php echo esc_html($cuenta->direccion_residencia); ?></td></tr>
+                    <tr><th>Ciudad:</th><td><?php echo esc_html($cuenta->ciudad_pais); ?></td></tr>
                     <tr><th>Acciones Hoy:</th><td><?php echo $cuenta->numero_acciones; ?></td></tr>
-                    <tr><th>Estado:</th><td><?php echo ucfirst($cuenta->estado_socio); ?></td></tr>
-                    <tr><th>Beneficiario:</th><td><?php echo $cuenta->beneficiario_nombre; ?></td></tr>
-                    <tr><th>Contacto Ben:</th><td><?php echo isset($cuenta->beneficiario_telefono) ? $cuenta->beneficiario_telefono : '-'; ?></td></tr>
+                    <tr><th>Estado Socio:</th><td><?php echo ucfirst($cuenta->estado_socio); ?></td></tr>
+                    <tr><th>Fecha de Incorporación:</th><td><?php echo $cuenta->fecha_ingreso_fondo ? date_i18n('d M Y', strtotime($cuenta->fecha_ingreso_fondo)) : 'N/D'; ?></td></tr>
+                    <tr><th>Beneficiario:</th><td><?php echo esc_html($cuenta->beneficiario_nombre); ?> (<?php echo esc_html($cuenta->beneficiario_parentesco); ?>)</td></tr>
+                    <tr><th>Contacto Ben:</th><td><?php echo isset($cuenta->beneficiario_telefono) ? esc_html($cuenta->beneficiario_telefono) : '-'; ?></td></tr>
                 </table>
             </div>
 
@@ -709,6 +744,19 @@ class LUD_Admin_Tesoreria {
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="lud-card" style="margin-top:15px; background:#f7f9fb;">
+            <h3>📌 Estado de Cuenta Detallado</h3>
+            <p><strong>Estado:</strong> <?php echo $estado_general; ?></p>
+            <ul style="margin-left:18px;">
+                <?php if ( $deuda_info['ahorro'] > 0 ): ?><li>Ahorro en mora: $<?php echo number_format($deuda_info['ahorro']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['secretaria'] > 0 ): ?><li>Cuota Secretaría pendiente: $<?php echo number_format($deuda_info['secretaria']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['multa'] > 0 ): ?><li>Multa por mora: $<?php echo number_format($deuda_info['multa']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['creditos'] > 0 ): ?><li>Créditos (capital+intereses): $<?php echo number_format($deuda_info['creditos']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['creditos'] == 0 && $deuda_info['total_admin'] == 0 ): ?><li>Sin pendientes de cobro.</li><?php endif; ?>
+                <li>Último aporte registrado: <?php echo $cuenta->fecha_ultimo_aporte ? date_i18n('d M Y', strtotime($cuenta->fecha_ultimo_aporte)) : 'No registrado'; ?></li>
+            </ul>
         </div>
 
         <div class="lud-card" style="margin-top:20px; border-left:5px solid #2980b9;">
@@ -851,6 +899,81 @@ class LUD_Admin_Tesoreria {
                 <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+        <?php
+    }
+
+    /**
+     * Vista de configuración de correos y pruebas SMTP para administradores.
+     */
+    private function render_configuracion_fondo() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( 'Acceso denegado' );
+        }
+
+        $config = lud_notificaciones()->obtener_configuracion();
+
+        if ( isset( $_GET['conf'] ) && $_GET['conf'] === 'ok' ) {
+            echo '<div class="notice notice-success"><p>✅ Configuración de correos actualizada.</p></div>';
+        } elseif ( isset( $_GET['conf'] ) && $_GET['conf'] === 'test' ) {
+            echo '<div class="notice notice-success"><p>✉️ Correo de prueba enviado. Revisa tu bandeja.</p></div>';
+        }
+        ?>
+        <div class="lud-card" style="margin-bottom:20px;">
+            <h2>⚙️ Configurador de correos electrónicos</h2>
+            <p>Define logo, enlaces y textos de pie que se usarán en todas las notificaciones automáticas.</p>
+            <form method="POST" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <input type="hidden" name="action" value="lud_guardar_config_correo">
+                <?php wp_nonce_field( 'lud_config_correo', 'lud_seguridad' ); ?>
+
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label>URL del logo para correos</label></th>
+                        <td><input type="url" name="logo_url" class="regular-text" value="<?php echo esc_attr( $config['logo_url'] ); ?>" placeholder="https://.../logo.png"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label>Enlace al portal</label></th>
+                        <td><input type="url" name="url_portal" class="regular-text" value="<?php echo esc_attr( $config['url_portal'] ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label>Enlace a políticas</label></th>
+                        <td><input type="url" name="enlace_politicas" class="regular-text" value="<?php echo esc_attr( $config['enlace_politicas'] ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label>Enlace para actualizar datos</label></th>
+                        <td><input type="url" name="enlace_actualizacion_datos" class="regular-text" value="<?php echo esc_attr( $config['enlace_actualizacion_datos'] ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label>Nombre remitente</label></th>
+                        <td><input type="text" name="remitente_nombre" class="regular-text" value="<?php echo esc_attr( $config['remitente_nombre'] ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label>Texto de pie</label></th>
+                        <td><textarea name="texto_pie" class="large-text" rows="3"><?php echo esc_textarea( $config['texto_pie'] ); ?></textarea></td>
+                    </tr>
+                </table>
+                <p class="submit">
+                    <button class="button button-primary">💾 Guardar configuración</button>
+                </p>
+            </form>
+        </div>
+
+        <div class="lud-card" style="border-left:5px solid #1565c0;">
+            <h2>🧪 LUD Test (correo de prueba)</h2>
+            <p>Envía un correo de prueba con la plantilla activa para validar tu configuración SMTP.</p>
+            <form method="POST" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <input type="hidden" name="action" value="lud_enviar_test_correo">
+                <?php wp_nonce_field( 'lud_test_correo', 'lud_seguridad' ); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label>Destino</label></th>
+                        <td><input type="email" name="correo_destino" class="regular-text" required value="<?php echo esc_attr( wp_get_current_user()->user_email ); ?>"></td>
+                    </tr>
+                </table>
+                <p class="submit">
+                    <button class="button">🚀 Enviar prueba</button>
+                </p>
+            </form>
         </div>
         <?php
     }
@@ -1100,6 +1223,15 @@ class LUD_Admin_Tesoreria {
             $wpdb->update( $wpdb->prefix . 'fondo_transacciones', ['estado' => 'aprobado', 'aprobado_por' => get_current_user_id(), 'fecha_aprobacion' => current_time('mysql'), 'detalle' => $detalle_final], ['id' => $tx->id] );
 
             $wpdb->query('COMMIT');
+
+            // Desglose para notificación automática al socio.
+            $desglose_rows = $wpdb->get_results( $wpdb->prepare( "SELECT concepto, SUM(monto) as total FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE transaccion_id = %d GROUP BY concepto", $tx->id ), ARRAY_A );
+            $desglose_envio = array();
+            foreach ( $desglose_rows as $row ) {
+                $desglose_envio[ $row['concepto'] ] = floatval( $row['total'] );
+            }
+            do_action( 'lud_evento_pago_aprobado', $tx->user_id, $tx->id, $tx->monto, $desglose_envio );
+
             wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&msg=approved' ) );
             exit;
         } catch (Exception $e) {
@@ -1119,6 +1251,10 @@ class LUD_Admin_Tesoreria {
         $motivo = sanitize_text_field( $_POST['motivo'] );
         $detalle = $wpdb->get_var("SELECT detalle FROM {$wpdb->prefix}fondo_transacciones WHERE id = $tx_id");
         $wpdb->update( $wpdb->prefix . 'fondo_transacciones', ['estado' => 'rechazado', 'aprobado_por' => get_current_user_id(), 'fecha_aprobacion' => current_time('mysql'), 'detalle' => $detalle . " || RECHAZADO: $motivo"], ['id' => $tx_id] );
+        $user_id = $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$wpdb->prefix}fondo_transacciones WHERE id = %d", $tx_id ) );
+        if ( $user_id ) {
+            do_action( 'lud_evento_pago_rechazado', $user_id, $tx_id, $motivo );
+        }
         wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&msg=rejected' ) );
         exit;
     }
@@ -1143,10 +1279,8 @@ class LUD_Admin_Tesoreria {
         $credito_actualizado = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE id=$id");
         $pdf_name = LUD_Module_Creditos::generar_pdf_final_static($credito_actualizado);
 
-        $user = get_userdata($credito->user_id);
-        $msg = "Tu crédito ha sido DESEMBOLSADO.<br><b>Instrucciones:</b> $entrega<br>Descarga tu contrato.";
-        $attach = $pdf_name ? [WP_CONTENT_DIR . "/uploads/fondo_seguro/contratos/$pdf_name"] : [];
-        wp_mail($user->user_email, "Crédito Desembolsado #$id", $msg, ['Content-Type: text/html'], $attach);
+        $adjunto_ruta = $pdf_name ? WP_CONTENT_DIR . "/uploads/fondo_seguro/contratos/$pdf_name" : '';
+        do_action( 'lud_evento_credito_decision', $credito->user_id, 'activo', $id, $entrega, $adjunto_ruta );
 
         wp_redirect(admin_url('admin.php?page=lud-tesoreria&msg=desembolsado'));
         exit;
@@ -1544,6 +1678,10 @@ class LUD_Admin_Tesoreria {
                 'fecha_registro' => current_time('mysql'),
                 'fecha_aprobacion' => current_time('mysql')
             ]);
+
+            // Registrar notificación de actualización de datos.
+            update_user_meta( $user_id, 'lud_ultima_actualizacion_datos', current_time('mysql') );
+            do_action( 'lud_evento_datos_actualizados', $user_id, 'Panel administrativo', implode(', ', $log_cambios) );
         }
 
         wp_redirect( admin_url("admin.php?page=lud-tesoreria&view=detalle_socio&id=$user_id&msg=datos_actualizados") );
@@ -1623,8 +1761,50 @@ class LUD_Admin_Tesoreria {
             array( '%d' )
         );
 
+        // Notificar al socio la decisión sobre su retiro.
+        $retiro = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_retiros WHERE id = %d", $retiro_id ) );
+        if ( $retiro ) {
+            do_action( 'lud_evento_retiro', $retiro->user_id, $decision, $retiro->monto_estimado, $motivo );
+        }
+
         $redirect = admin_url( 'admin.php?page=lud-tesoreria&view=dashboard&lud_msg=retiro_' . $decision );
         wp_redirect( $redirect );
+        exit;
+    }
+
+    /**
+     * Guarda la configuración de correos desde la pestaña de ajustes.
+     */
+    public function procesar_config_correos() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Sin permisos' );
+        if ( ! isset( $_POST['lud_seguridad'] ) || ! wp_verify_nonce( $_POST['lud_seguridad'], 'lud_config_correo' ) ) wp_die( 'Seguridad' );
+
+        $config = array(
+            'logo_url'                   => esc_url_raw( $_POST['logo_url'] ),
+            'url_portal'                 => esc_url_raw( $_POST['url_portal'] ),
+            'enlace_politicas'           => esc_url_raw( $_POST['enlace_politicas'] ),
+            'enlace_actualizacion_datos' => esc_url_raw( $_POST['enlace_actualizacion_datos'] ),
+            'remitente_nombre'           => sanitize_text_field( $_POST['remitente_nombre'] ),
+            'texto_pie'                  => sanitize_textarea_field( $_POST['texto_pie'] )
+        );
+
+        lud_notificaciones()->guardar_configuracion( $config );
+        wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=configuracion_fondo&conf=ok' ) );
+        exit;
+    }
+
+    /**
+     * Envía un correo de prueba usando la plantilla configurada.
+     */
+    public function procesar_test_correo() {
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Sin permisos' );
+        if ( ! isset( $_POST['lud_seguridad'] ) || ! wp_verify_nonce( $_POST['lud_seguridad'], 'lud_test_correo' ) ) wp_die( 'Seguridad' );
+
+        $destino = sanitize_email( $_POST['correo_destino'] );
+        if ( ! is_email( $destino ) ) wp_die( 'Correo inválido' );
+
+        lud_notificaciones()->enviar_correo_prueba( $destino );
+        wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=configuracion_fondo&conf=test' ) );
         exit;
     }
 

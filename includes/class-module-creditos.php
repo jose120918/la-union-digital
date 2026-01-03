@@ -118,6 +118,7 @@ class LUD_Module_Creditos {
         $saldo_pendiente = 0;
         $msg_refinanciacion = '';
         $bloqueo_70 = false;
+        $solo_credito_agil = false; // Comentario: si no cumple 70%, bloquea solo corrientes.
 
         if ( $credito_activo ) {
             $monto_prestado = floatval($credito_activo->monto_aprobado); // Usar el aprobado, no el solicitado
@@ -129,10 +130,11 @@ class LUD_Module_Creditos {
 
             if ( $porcentaje_pagado < 70 ) {
                 $bloqueo_70 = true;
+                $solo_credito_agil = true; // Comentario: puede pedir Ágil, pero no Corriente/refinanciación.
                 $msg_refinanciacion = '<div class="lud-alert error">
-                    <strong>⚠️ Tienes un crédito vigente</strong><br>
-                    Has pagado el <b>'.number_format($porcentaje_pagado, 1).'%</b> de tu crédito actual.<br>
-                    Los estatutos exigen haber pagado mínimo el <b>70%</b> para solicitar uno nuevo (Refinanciación).
+                    <strong>⚠️ Crédito vigente</strong><br>
+                    Has pagado el <b>'.number_format($porcentaje_pagado, 1).'%</b> de tu crédito corriente actual.<br>
+                    Para otro crédito corriente debes haber pagado mínimo el <b>70%</b>. Puedes solicitar un crédito Ágil independientemente.
                 </div>';
             } else {
                 $modo_refinanciacion = true;
@@ -143,8 +145,6 @@ class LUD_Module_Creditos {
                 </div>';
             }
         }
-
-        if ( $bloqueo_70 ) return '<div class="lud-card">'.$msg_refinanciacion.'</div>';
 
         // Topes finales
         $tope_corriente = min($capacidad_maxima, $liquidez);
@@ -208,8 +208,8 @@ class LUD_Module_Creditos {
                 <div class="lud-form-group">
                     <label class="lud-label">Tipo de Crédito</label>
                     <div class="lud-radio-group">
-                        <label class="lud-radio-card selected" id="opt_corriente">
-                            <input type="radio" name="tipo_credito" value="corriente" checked onchange="cambiarTipo('corriente')">
+                        <label class="lud-radio-card <?php echo $solo_credito_agil ? '' : 'selected'; ?>" id="opt_corriente">
+                            <input type="radio" name="tipo_credito" value="corriente" <?php echo $solo_credito_agil ? 'disabled' : 'checked'; ?> onchange="cambiarTipo('corriente')">
                             <div>
                                 <span class="lud-radio-title">🏢 Corriente (2% mes)</span>
                                 <span class="lud-radio-desc">Cupo Máx: $<?php echo number_format($tope_corriente,0); ?>. Plazo máx 36 meses.</span>
@@ -217,8 +217,8 @@ class LUD_Module_Creditos {
                         </label>
                         
                         <?php if(!$modo_refinanciacion): // No se puede pedir Ágil si se está refinanciando un Corriente ?>
-                        <label class="lud-radio-card" id="opt_agil">
-                            <input type="radio" name="tipo_credito" value="agil" onchange="cambiarTipo('agil')">
+                        <label class="lud-radio-card <?php echo $solo_credito_agil ? 'selected' : ''; ?>" id="opt_agil">
+                            <input type="radio" name="tipo_credito" value="agil" onchange="cambiarTipo('agil')" <?php echo $solo_credito_agil ? 'checked' : ''; ?>>
                             <div>
                                 <span class="lud-radio-title">⚡ Ágil (1.5% mes)</span>
                                 <span class="lud-radio-desc">Cupo Máx: $<?php echo number_format($tope_agil,0); ?>. Plazo fijo 1 mes.</span>
@@ -247,7 +247,9 @@ class LUD_Module_Creditos {
                 <div class="lud-sim-result">
                     <div class="lud-sim-row"><span>Cuota Capital:</span><span id="sim_capital">$0</span></div>
                     <div class="lud-sim-row"><span>Interés Mensual (<span id="sim_tasa">2%</span>):</span><span id="sim_interes">$0</span></div>
+                    <div class="lud-sim-row"><span>Interés total del crédito:</span><span id="sim_interes_total">$0</span></div>
                     <div class="lud-sim-total"><span>Cuota Mensual Aprox:</span><span id="sim_total">$0</span></div>
+                    <small style="display:block; color:#777; margin-top:6px;">El interés total es la suma de los intereses mensuales a lo largo del plazo.</small>
                     
                     <div id="bloque_cruce" style="display:none; margin-top:15px; border-top:1px solid #c8e6c9; padding-top:10px;">
                         <div class="lud-sim-row" style="color:#c62828;"><span>(-) Saldo Crédito Anterior:</span><span>- $<?php echo number_format($saldo_pendiente); ?></span></div>
@@ -255,6 +257,7 @@ class LUD_Module_Creditos {
                     </div>
                     
                     <div id="sim_warning" style="display:none; color:#c62828; font-size:0.8rem; margin-top:10px; background:#ffebee; padding:5px;">⚠️ Error: El monto debe cubrir al menos la deuda anterior.</div>
+                    <div id="sim_cuota_min" class="lud-alert error lud-alert-compacta" style="display:none; margin-top:10px;">⚠️ La cuota mensual no puede ser menor a $50.000 según estatutos.</div>
                 </div>
 
                 <div class="lud-form-group" id="bloque_codeudor">
@@ -284,6 +287,7 @@ class LUD_Module_Creditos {
             const maxAgil = <?php echo $tope_agil; ?>;
             const saldoPendiente = parseFloat(document.getElementById('saldo_pendiente').value) || 0;
             const esRefinanciacion = (document.getElementById('modo_refinanciacion').value === '1');
+            const soloAgil = <?php echo $solo_credito_agil ? 'true' : 'false'; ?>;
 
             // --- CANVAS FIRMA ---
             var canvas = document.getElementById('signature-pad');
@@ -345,15 +349,18 @@ class LUD_Module_Creditos {
                 const capitalMensual = monto / plazo;
                 const interesMensual = monto * tasa;
                 const cuotaTotal = capitalMensual + interesMensual;
+                const interesTotal = interesMensual * plazo;
 
                 document.getElementById('sim_capital').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(capitalMensual));
                 document.getElementById('sim_interes').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(interesMensual));
+                document.getElementById('sim_interes_total').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(interesTotal));
                 document.getElementById('sim_total').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(cuotaTotal));
 
                 // Validación Refinanciación
                 let valido = true;
                 let maximo = (tipoActual === 'corriente') ? maxCorriente : maxAgil;
                 const firma = document.getElementById('signature_data').value;
+                const alertaCuota = document.getElementById('sim_cuota_min');
 
                 if (esRefinanciacion) {
                     document.getElementById('bloque_cruce').style.display = 'block';
@@ -371,6 +378,14 @@ class LUD_Module_Creditos {
                     document.getElementById('bloque_cruce').style.display = 'none';
                 }
 
+                // Regla de cuota mínima: ninguna cuota mensual puede ser menor a $50.000 según estatutos.
+                if (tipoActual === 'corriente' && cuotaTotal < 50000) {
+                    valido = false;
+                    alertaCuota.style.display = 'block';
+                } else {
+                    alertaCuota.style.display = 'none';
+                }
+
                 if (monto > maximo || monto <= 0 || !firma) valido = false;
                 
                 const btn = document.getElementById('btn_solicitar');
@@ -382,7 +397,11 @@ class LUD_Module_Creditos {
             canvas.addEventListener('mouseup', calcular); canvas.addEventListener('touchend', calcular);
             
             // Iniciar
-            cambiarTipo('corriente');
+            if (soloAgil) {
+                cambiarTipo('agil');
+            } else {
+                cambiarTipo('corriente');
+            }
         </script>
         <style>
             .lud-range { width: 100%; margin: 10px 0; accent-color: #1565c0; } 
@@ -433,11 +452,11 @@ class LUD_Module_Creditos {
 
         // 3. REGLA DEL 70% (Server-Side)
         $credito_activo = $wpdb->get_row( "SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id AND estado = 'activo' LIMIT 1" );
-        if ( $credito_activo ) {
+        if ( $credito_activo && $tipo === 'corriente' ) {
             $pagado = floatval($credito_activo->monto_aprobado) - floatval($credito_activo->saldo_actual);
             $pct = ($pagado / floatval($credito_activo->monto_aprobado)) * 100;
             
-            if ( $pct < 70 ) wp_die("Error: No cumples con el 70% pagado para refinanciar.");
+            if ( $pct < 70 ) wp_die("Error: No cumples con el 70% pagado para un nuevo crédito corriente.");
             
             // Si pasa, agregamos nota de refinanciación
             $aviso_diciembre .= " || REFINANCIACIÓN: Se cruza con Crédito #{$credito_activo->id}. Saldo anterior: $".number_format($credito_activo->saldo_actual);
@@ -453,6 +472,11 @@ class LUD_Module_Creditos {
         
         // Round final para guardar en la BD como referencia limpia
         $cuota = round($capital_mes + $interes_mes, 2);
+
+        // Regla estatutaria: la cuota mensual no puede ser inferior a $50.000
+        if ( $tipo === 'corriente' && $cuota < 50000 ) {
+            wp_die( '<div style="padding:30px; font-family:sans-serif; color:#b71c1c;"><h2>⚠️ Solicitud no válida</h2><p>La cuota mensual resultante es inferior a $50.000. Ajusta monto o plazo según los estatutos.</p></div>' );
+        }
         
         $codigo_unico = strtoupper( uniqid('CRED-') );
 
@@ -504,6 +528,14 @@ class LUD_Module_Creditos {
             array( '%d', '%s', '%f', '%s', '%d', '%f', '%f', '%d', '%s', '%s', '%s', '%s' ) 
         );
         $credito_id = $wpdb->insert_id;
+
+        // Notificar eventos automáticos.
+        do_action( 'lud_evento_credito_solicitado', $user_id, $credito_id, array(
+            'monto'   => $monto,
+            'tipo'    => $tipo,
+            'plazo'   => $plazo,
+            'en_fila' => $en_fila_liquidez
+        ) );
 
         // Notificar Deudor
         $this->enviar_aviso_deudor($deudor_id, $user_id, $monto, $credito_id, $codigo_unico);
@@ -681,17 +713,8 @@ class LUD_Module_Creditos {
      * Envía correo al deudor solidario con el enlace de aprobación.
      */
     private function enviar_aviso_deudor($deudor_id, $solicitante_id, $monto, $credito_id, $token) {
-        $deudor = get_userdata($deudor_id);
-        $solicitante = get_userdata($solicitante_id);
-        $link = home_url('/zona-deudor/') . "?cid=$credito_id&token=$token";
-
-        $msg = "Hola {$deudor->display_name},<br><br>
-        {$solicitante->display_name} te ha postulado como Deudor Solidario para un crédito de $".number_format($monto).".<br>
-        Para revisar y aprobar esta solicitud, ingresa aquí:<br><br>
-        <a href='$link' style='padding:10px 20px; background:#1565c0; color:#fff; text-decoration:none; border-radius:5px;'>Revisar Solicitud</a>";
-        
-        $headers = array('Content-Type: text/html; charset=UTF-8');
-        wp_mail( $deudor->user_email, "Solicitud de Codeudor - Fondo La Unión", $msg, $headers );
+        // Delegamos al motor de notificaciones para aplicar la plantilla unificada.
+        do_action( 'lud_evento_credito_deudor', $deudor_id, $solicitante_id, $monto, $credito_id, $token );
     }
 
     /**
