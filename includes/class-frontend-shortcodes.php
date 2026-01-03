@@ -59,10 +59,13 @@ class LUD_Frontend_Shortcodes {
         $inicio->modify( 'first day of next month' ); 
         $hoy = new DateTime();
         $meses_vencidos = 0;
+        $dias_vencidos = 0; // Comentario: acumulador de días para generar textos de mora.
         $corte_mes = new DateTime( date('Y-m-01') ); // Comentario: corte al primer día del mes en curso.
         $cursor = clone $inicio;
         while ( $cursor <= $corte_mes ) {
             $meses_vencidos++;
+            // Comentario: sumamos días del mes para describir mora en días cuando aplique.
+            $dias_vencidos += intval( $cursor->format('t') );
             $cursor->modify( 'first day of next month' );
         }
 
@@ -101,21 +104,25 @@ class LUD_Frontend_Shortcodes {
 
             <?php if ( $total_pendiente > 0 ): ?>
             <div class="lud-debt-box" style="border:none; padding:12px; background:#fff8e1; border-radius:12px; box-shadow:inset 0 0 0 1px #f1e0b3;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="display:flex; justify-content:flex-start; align-items:center; margin-bottom:8px; gap:8px;">
                     <h4 style="margin:0; font-size:0.95rem; color:#b26a00;">⚠️ Pendientes por pagar</h4>
-                    <span style="font-weight:700; color:#b71c1c; font-size:1.05rem;">$ <?php echo number_format($total_pendiente); ?></span>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:10px;">
                     <?php
                     $conceptos = array(
                         array(
                             'nombre' => 'Ahorro',
-                            'detalle' => $meses_vencidos > 0 ? ('Cuotas de ahorro por '.$meses_vencidos.' mes(es)') : 'Saldo pendiente de ahorro',
+                            // Comentario: describimos monto mensual y tiempo de mora en formato días/mes(es).
+                            'detalle' => $meses_vencidos > 0
+                                ? ('Cuota mensual $'.number_format($valor_cuota_ahorro).' · mora de '.($dias_vencidos >= 31 ? '1 mes '.($dias_vencidos-30).' día(s)' : $dias_vencidos.' día(s)'))
+                                : ('Cuota mensual $'.number_format($valor_cuota_ahorro).' pendiente'),
                             'subtotal' => $debe_ahorro
                         ),
                         array(
                             'nombre' => 'Administración',
-                            'detalle' => $meses_vencidos > 0 ? ('Cuotas de secretaría por '.$meses_vencidos.' mes(es)') : 'Saldo pendiente de secretaría',
+                            'detalle' => $meses_vencidos > 0
+                                ? ('Cuota mensual $'.number_format($valor_cuota_secretaria).' · mora de '.($dias_vencidos >= 31 ? '1 mes '.($dias_vencidos-30).' día(s)' : $dias_vencidos.' día(s)'))
+                                : ('Cuota mensual $'.number_format($valor_cuota_secretaria).' pendiente'),
                             'subtotal' => $debe_secretaria
                         ),
                         array(
@@ -125,12 +132,14 @@ class LUD_Frontend_Shortcodes {
                         ),
                         array(
                             'nombre' => 'Intereses Mora',
-                            'detalle' => 'Recargos por días de retraso en créditos',
+                            'detalle' => 'Recargos por días de retraso en créditos ('.$dias_mora_estimados.' día(s) aprox.)',
                             'subtotal' => $debe_interes_mora
                         ),
                         array(
                             'nombre' => 'Multas',
-                            'detalle' => $meses_multa > 0 ? ('Multas generadas (aprox. '.$meses_multa.' mes(es) en mora)') : 'Multas estatutarias pendientes',
+                            'detalle' => $meses_multa > 0
+                                ? ('Multas generadas ~'.$meses_multa.' mes(es) de mora · cuota referencial $'.number_format( ($acciones > 0 ? (1000 * $acciones) : 0) ))
+                                : 'Multas estatutarias pendientes',
                             'subtotal' => $debe_multa
                         ),
                         array(
@@ -151,7 +160,7 @@ class LUD_Frontend_Shortcodes {
                         </div>
                     <?php endforeach; ?>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid #f0d9a7;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
                     <span style="font-weight:700; color:#4e342e;">Total a pagar:</span>
                     <span style="font-weight:800; color:#b71c1c;">$ <?php echo number_format($total_pendiente); ?></span>
                 </div>
