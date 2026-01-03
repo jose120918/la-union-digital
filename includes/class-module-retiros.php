@@ -95,6 +95,21 @@ class LUD_Module_Retiros {
             $mensaje_estado = '<div class="lud-alert error">❌ ' . esc_html( $_GET['lud_error'] ) . '</div>';
         }
 
+        // Comentario: si no está en paz y salvo, solo mostramos alerta y encabezado.
+        if ( $bloqueado ) {
+            ob_start();
+            ?>
+            <div class="lud-card">
+                <div class="lud-header">
+                    <h3>Solicitud de Retiro</h3>
+                </div>
+                <?php echo $mensaje_estado; ?>
+                <div class="lud-alert error" style="margin-top:10px;"><?php echo $mensaje_bloqueo; ?></div>
+            </div>
+            <?php
+            return ob_get_clean();
+        }
+
         ob_start();
         ?>
         <div class="lud-card">
