@@ -161,7 +161,7 @@ class LUD_Module_Creditos {
         // A. Validar Sanciones (Lista Negra)
         if ( self::verificar_sancion_mora($user_id) ) {
             return '<div class="lud-card" style="border-left:5px solid #c62828;">
-                        <h3 style="color:#c62828">🚫 Solicitud Bloqueada</h3>
+                        <h3 style="color:#c62828">🚫 Creditos Bloqueados</h3>
                         <p>El sistema ha detectado <b>retrasos en tus pagos</b> en los últimos 3 meses.</p>
                         <p>Según los estatutos, debes esperar 90 días sin moras para volver a solicitar un crédito.</p>
                     </div>';
