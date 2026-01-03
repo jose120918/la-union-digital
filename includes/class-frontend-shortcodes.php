@@ -71,7 +71,7 @@ class LUD_Frontend_Shortcodes {
 
         // Comentario: estimación de meses en mora a partir de los días calculados para multas.
         $dias_mora_estimados = ( $acciones > 0 ) ? $debe_multa / ( 1000 * $acciones ) : 0;
-        $meses_multa = ( $dias_mora_estimados > 0 ) ? ceil( $dias_mora_estimados / 30 ) : 0;
+        $dias_mora_redondeados = ( $dias_mora_estimados > 0 ) ? ceil( $dias_mora_estimados ) : 0; // Comentario: días acumulados de mora para mostrar el cálculo exacto de la multa.
 
         $total_pendiente = $debe_ahorro + $debe_secretaria + $debe_multa + $debe_interes_credito + $debe_interes_mora + $debe_otros;
 
@@ -137,8 +137,8 @@ class LUD_Frontend_Shortcodes {
                         ),
                         array(
                             'nombre' => 'Multas',
-                            'detalle' => $meses_multa > 0
-                                ? ('Multas generadas ~'.$meses_multa.' mes(es) de mora · cuota referencial $'.number_format( ($acciones > 0 ? (1000 * $acciones) : 0) ))
+                            'detalle' => $dias_mora_redondeados > 0
+                                ? ('Multas por '.number_format( $dias_mora_redondeados, 0, ',', '.' ).' día(s) de atraso acumulado · $1.000 por acción y día')
                                 : 'Multas estatutarias pendientes',
                             'subtotal' => $debe_multa
                         ),
