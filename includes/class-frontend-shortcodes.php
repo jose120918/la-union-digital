@@ -42,6 +42,7 @@ class LUD_Frontend_Shortcodes {
         $acciones = intval( $datos->numero_acciones );
         $valor_cuota_ahorro = $acciones * 50000;
         $valor_cuota_secretaria = $acciones * 1000;
+        $valor_accion_unitario = ($acciones > 0) ? ($valor_cuota_ahorro / $acciones) : 50000; // Comentario: valor vigente de cada acción.
         
         // --- 1. CÁLCULO DEUDA MENSUAL AGRUPADA ---
         $info_deuda = LUD_Module_Transacciones::calcular_deuda_usuario_estatico( $user_id );
@@ -58,8 +59,9 @@ class LUD_Frontend_Shortcodes {
         $inicio->modify( 'first day of next month' ); 
         $hoy = new DateTime();
         $meses_vencidos = 0;
+        $corte_mes = new DateTime( date('Y-m-01') ); // Comentario: corte al primer día del mes en curso.
         $cursor = clone $inicio;
-        while ( $cursor <= $hoy ) {
+        while ( $cursor <= $corte_mes ) {
             $meses_vencidos++;
             $cursor->modify( 'first day of next month' );
         }
@@ -98,32 +100,38 @@ class LUD_Frontend_Shortcodes {
             <p style="margin-top:8px; color:#666; font-size:0.9rem;">Activo desde: <?php echo $datos->fecha_ingreso_fondo ? date_i18n('d M Y', strtotime($datos->fecha_ingreso_fondo)) : 'Sin registro'; ?></p>
 
             <?php if ( $total_pendiente > 0 ): ?>
-            <div class="lud-debt-box">
-                <h4>⚠️ Desglose de deuda por concepto</h4>
-                <div class="lud-debt-row"><span>Total pendiente:</span><span>$ <?php echo number_format($total_pendiente); ?></span></div>
-                <div style="margin-top:10px; display:grid; grid-template-columns: 1fr; gap:10px;">
-                    <?php
-                    $conceptos = array(
-                        array( 'nombre' => 'Ahorro', 'meses' => $meses_vencidos, 'valor' => $valor_cuota_ahorro, 'subtotal' => $debe_ahorro ),
-                        array( 'nombre' => 'Administración', 'meses' => $meses_vencidos, 'valor' => $valor_cuota_secretaria, 'subtotal' => $debe_secretaria ),
-                        array( 'nombre' => 'Intereses Créditos', 'meses' => $debe_interes_credito > 0 ? 1 : 0, 'valor' => $debe_interes_credito, 'subtotal' => $debe_interes_credito ),
-                        array( 'nombre' => 'Intereses Mora', 'meses' => $debe_interes_mora > 0 ? 1 : 0, 'valor' => $debe_interes_mora, 'subtotal' => $debe_interes_mora ),
-                        array( 'nombre' => 'Multas', 'meses' => $meses_multa, 'valor' => ($acciones > 0 ? (1000 * $acciones) : 0), 'subtotal' => $debe_multa ),
-                        array( 'nombre' => 'Otros', 'meses' => 0, 'valor' => $debe_otros, 'subtotal' => $debe_otros ),
-                    );
-                    foreach ( $conceptos as $con ): ?>
-                        <div style="border:1px solid #eee; border-radius:8px; padding:8px; background:#fafafa;">
-                            <div style="display:flex; justify-content:space-between; font-weight:700; color:#444;">
-                                <span><?php echo esc_html( $con['nombre'] ); ?></span>
-                                <span>$ <?php echo number_format( $con['subtotal'] ); ?></span>
-                            </div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:#666; margin-top:4px;">
-                                <span>Meses vencidos: <?php echo intval( $con['meses'] ); ?></span>
-                                <span>Valor unitario: $ <?php echo number_format( $con['valor'] ); ?></span>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
+            <div class="lud-debt-box" style="border:none; padding:10px; background:#f9f9f9;">
+                <h4 style="margin:0 0 8px 0; font-size:0.95rem; color:#444;">⚠️ Desglose de deuda por concepto</h4>
+                <div style="font-size:0.85rem; color:#555; margin-bottom:6px;">Total pendiente: $ <?php echo number_format($total_pendiente); ?></div>
+                <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:#444;">
+                    <thead style="text-align:left; color:#666;">
+                        <tr>
+                            <th style="padding:4px 0;">Concepto</th>
+                            <th style="padding:4px 0;">Meses vencidos</th>
+                            <th style="padding:4px 0; text-align:right;">Total adeudado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $conceptos = array(
+                            array( 'nombre' => 'Ahorro', 'meses' => $meses_vencidos, 'subtotal' => $debe_ahorro ),
+                            array( 'nombre' => 'Administración', 'meses' => $meses_vencidos, 'subtotal' => $debe_secretaria ),
+                            array( 'nombre' => 'Intereses Créditos', 'meses' => $debe_interes_credito > 0 ? 1 : 0, 'subtotal' => $debe_interes_credito ),
+                            array( 'nombre' => 'Intereses Mora', 'meses' => $debe_interes_mora > 0 ? 1 : 0, 'subtotal' => $debe_interes_mora ),
+                            array( 'nombre' => 'Multas', 'meses' => $meses_multa, 'subtotal' => $debe_multa ),
+                            array( 'nombre' => 'Otros', 'meses' => 0, 'subtotal' => $debe_otros ),
+                        );
+                        foreach ( $conceptos as $con ):
+                            if ( $con['subtotal'] <= 0 ) continue; // Comentario: ocultamos conceptos en cero.
+                        ?>
+                            <tr>
+                                <td style="padding:4px 0; color:#444;"><?php echo esc_html( $con['nombre'] ); ?></td>
+                                <td style="padding:4px 0; color:#555;"><?php echo intval( $con['meses'] ); ?></td>
+                                <td style="padding:4px 0; text-align:right; color:#b71c1c;">$ <?php echo number_format( $con['subtotal'] ); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
             <?php else: ?>
             <div class="lud-success-box">✅ Estás al día con tus aportes.</div>
@@ -133,6 +141,7 @@ class LUD_Frontend_Shortcodes {
                 <div class="lud-detail-item">
                     <strong>Mis Acciones Hoy</strong>
                     <span><?php echo $acciones; ?></span>
+                    <small style="display:block; color:#999; font-size:0.75rem; margin-top:2px;">Valor acción: $ <?php echo number_format( $valor_accion_unitario ); ?></small>
                 </div>
                 <div class="lud-detail-item" style="position:relative;">
                     <strong>Rendimientos <?php echo $anio_actual; ?></strong>
@@ -182,7 +191,7 @@ class LUD_Frontend_Shortcodes {
                 </div>
                 <button class="lud-btn" id="btn_filtrar_hist" style="width:auto; padding:10px 18px; margin:0;">Filtrar</button>
             </div>
-            <div id="historial_body" style="display:flex; flex-direction:column; gap:12px;">
+            <div id="historial_body" style="display:flex; flex-direction:column; gap:8px;">
                 <?php if ( empty($movimientos) ): ?>
                     <div style="text-align:center; padding:20px; color:#777; background:#fafafa; border-radius:8px;">
                         <span style="font-size:2rem;">📭</span><br>No hay movimientos registrados aún.
@@ -191,22 +200,24 @@ class LUD_Frontend_Shortcodes {
                     <?php foreach($movimientos as $m): ?>
                         <?php $upload = wp_upload_dir(); ?>
                         <?php $link = !empty($m->comprobante_url) ? trailingslashit($upload['baseurl']) . 'fondo_seguro/' . $m->comprobante_url : ''; ?>
-                        <div class="lud-card" style="border:1px solid #e0e0e0; padding:14px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <span style="font-weight:600; color:#444;"><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></span>
-                                <span class="lud-badge <?php echo strtolower($m->estado); ?>"><?php echo ucfirst($m->estado); ?></span>
+                        <div class="lud-card lud-mov-compacta">
+                            <div class="col-izq">
+                                <div style="font-weight:600; color:#444; display:flex; gap:8px; flex-wrap:wrap;">
+                                    <span><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></span>
+                                    <span style="color:#777;">ID: <?php echo 'TX-' . $m->id; ?></span>
+                                </div>
+                                <div style="font-size:0.9rem; color:#555; margin-top:4px;">
+                                    <?php if ( $link ): ?>
+                                        <a href="<?php echo esc_url( $link ); ?>" target="_blank" style="color:#1565c0; text-decoration:underline; font-size:0.9rem;">Ver comprobante</a>
+                                    <?php else: ?>
+                                        <span style="color:#999;">Sin comprobante adjunto</span>
+                                    <?php endif; ?>
+                                </div>
                             </div>
-                            <div style="font-size:1.4rem; font-weight:700; margin:8px 0; color:#1b5e20;">$ <?php echo number_format($m->monto); ?></div>
-                            <div style="font-size:0.95rem; color:#555;">
-                                <strong><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></strong>
-                                <?php if ( !empty( $m->detalle ) ): ?><br><small style="color:#777;"><?php echo esc_html( wp_trim_words( $m->detalle, 18 ) ); ?></small><?php endif; ?>
-                            </div>
-                            <div style="margin-top:10px;">
-                                <?php if ( $link ): ?>
-                                    <a href="<?php echo esc_url( $link ); ?>" target="_blank" class="lud-btn" style="width:auto; padding:8px 12px; font-size:0.9rem;">Ver comprobante</a>
-                                <?php else: ?>
-                                    <span style="color:#999; font-size:0.9rem;">Sin comprobante adjunto</span>
-                                <?php endif; ?>
+                            <div class="col-der">
+                                <span class="lud-badge <?php echo strtolower($m->estado); ?>" style="font-size:0.8rem;"><?php echo ucfirst($m->estado); ?></span>
+                                <div style="font-size:1.2rem; font-weight:700; color:#1b5e20; margin-top:4px;">$ <?php echo number_format($m->monto); ?></div>
+                                <div style="font-size:0.85rem; color:#555;"><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></div>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -263,6 +274,15 @@ class LUD_Frontend_Shortcodes {
                 });
             })();
         </script>
+        <style>
+            /* Comentario: estilos compactos para la lista de movimientos. */
+            .lud-card.lud-mov-compacta {
+                border:1px solid #e0e0e0; padding:10px; display:flex; justify-content:space-between; align-items:center; gap:10px;
+            }
+            .lud-mov-compacta .col-izq { flex:1; min-width:0; }
+            .lud-mov-compacta .col-der { text-align:right; min-width:140px; }
+            .lud-mov-compacta small { color:#777; }
+        </style>
         <?php
         return ob_get_clean();
     }
@@ -315,22 +335,24 @@ class LUD_Frontend_Shortcodes {
             $upload = wp_upload_dir();
             $link = !empty($m->comprobante_url) ? trailingslashit($upload['baseurl']) . 'fondo_seguro/' . $m->comprobante_url : '';
             ?>
-            <div class="lud-card" style="border:1px solid #e0e0e0; padding:14px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-weight:600; color:#444;"><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></span>
-                    <span class="lud-badge <?php echo strtolower($m->estado); ?>"><?php echo ucfirst($m->estado); ?></span>
+            <div class="lud-card lud-mov-compacta">
+                <div class="col-izq">
+                    <div style="font-weight:600; color:#444; display:flex; gap:8px; flex-wrap:wrap;">
+                        <span><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></span>
+                        <span style="color:#777;">ID: <?php echo 'TX-' . $m->id; ?></span>
+                    </div>
+                    <div style="font-size:0.9rem; color:#555; margin-top:4px;">
+                        <?php if ( $link ): ?>
+                            <a href="<?php echo esc_url( $link ); ?>" target="_blank" style="color:#1565c0; text-decoration:underline; font-size:0.9rem;">Ver comprobante</a>
+                        <?php else: ?>
+                            <span style="color:#999;">Sin comprobante adjunto</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <div style="font-size:1.3rem; font-weight:700; margin:8px 0; color:#1b5e20;">$ <?php echo number_format($m->monto); ?></div>
-                <div style="font-size:0.95rem; color:#555;">
-                    <strong><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></strong>
-                    <?php if ( !empty( $m->detalle ) ): ?><br><small style="color:#777;"><?php echo esc_html( wp_trim_words( $m->detalle, 18 ) ); ?></small><?php endif; ?>
-                </div>
-                <div style="margin-top:10px;">
-                    <?php if ( $link ): ?>
-                        <a href="<?php echo esc_url( $link ); ?>" target="_blank" class="lud-btn" style="width:auto; padding:8px 12px; font-size:0.9rem;">Ver comprobante</a>
-                    <?php else: ?>
-                        <span style="color:#999; font-size:0.9rem;">Sin comprobante adjunto</span>
-                    <?php endif; ?>
+                <div class="col-der">
+                    <span class="lud-badge <?php echo strtolower($m->estado); ?>" style="font-size:0.8rem;"><?php echo ucfirst($m->estado); ?></span>
+                    <div style="font-size:1.2rem; font-weight:700; color:#1b5e20; margin-top:4px;">$ <?php echo number_format($m->monto); ?></div>
+                    <div style="font-size:0.85rem; color:#555;"><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></div>
                 </div>
             </div>
             <?php
@@ -472,12 +494,6 @@ class LUD_Frontend_Shortcodes {
      */
     public function render_formulario_registro() {
         if ( is_user_logged_in() ) return '<div class="lud-alert success">Ya tienes una sesión activa. No necesitas registrarte de nuevo.</div>';
-        global $wpdb;
-        $cupos_ocupados = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'" ) );
-        if ( $cupos_ocupados >= 36 ) {
-            return '<div class="lud-card" style="text-align:center;">🛑 <strong>Cupos llenos</strong><br>Actualmente hay 36 socios activos según los estatutos. Vuelve a intentarlo cuando se libere un cupo.</div>';
-        }
-        
         $msg = '';
         if ( isset($_GET['lud_reg']) && $_GET['lud_reg'] == 'ok' ) {
             return '<div class="lud-card" style="text-align:center;">
@@ -581,12 +597,6 @@ class LUD_Frontend_Shortcodes {
      */
     public function procesar_registro_nuevo() {
         if ( ! isset( $_POST['lud_security'] ) || ! wp_verify_nonce( $_POST['lud_security'], 'lud_registro_nonce' ) ) wp_die('Seguridad');
-
-        global $wpdb;
-        $cupos_ocupados = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'" ) );
-        if ( $cupos_ocupados >= 36 ) {
-            wp_redirect( add_query_arg( 'lud_err', 'Cupos llenos', wp_get_referer() ) ); exit;
-        }
 
         $email = sanitize_email($_POST['email']);
         $documento = sanitize_text_field($_POST['numero_documento']);

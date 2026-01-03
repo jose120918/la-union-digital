@@ -65,6 +65,7 @@ class LUD_Admin_Tesoreria {
         $active_hist = ($view == 'historial_intereses') ? 'nav-tab-active' : '';
         $active_config = ($view == 'configuracion_fondo') ? 'nav-tab-active' : '';
         $active_asistencia = ($view == 'control_asistencia') ? 'nav-tab-active' : '';
+        $active_presidencia = ($view == 'presidencia') ? 'nav-tab-active' : '';
         
         echo '<nav class="nav-tab-wrapper">';
         echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'" title="Ayuda: Aquí ves el dinero total en caja, apruebas pagos y desembolsas créditos.">📊 Tablero Principal</a>';
@@ -72,6 +73,9 @@ class LUD_Admin_Tesoreria {
         echo '<a href="?page=lud-tesoreria&view=historial_intereses" class="nav-tab '.$active_hist.'" title="Ayuda: Lista de los dineros entregados en efectivo cada Diciembre.">📜 Historial Intereses Pagados</a>';
         if ( current_user_can( 'lud_manage_tesoreria' ) ) {
             echo '<a href="?page=lud-tesoreria&view=control_asistencia" class="nav-tab '.$active_asistencia.'" title="Marcar asistencia a asambleas y generar multas automáticas.">🗓️ Control de Asistencia</a>';
+        }
+        if ( $es_presidente ) {
+            echo '<a href="?page=lud-tesoreria&view=presidencia" class="nav-tab '.$active_presidencia.'" title="Aprobar o rechazar solicitudes de ingreso con historial.">🏛️ Presidencia</a>';
         }
         if ( current_user_can( 'manage_options' ) ) {
             echo '<a href="?page=lud-tesoreria&view=configuracion_fondo" class="nav-tab '.$active_config.'" title="Configura plantillas de correo y pruebas SMTP.">⚙️ Configuración del Fondo</a>';
@@ -89,6 +93,8 @@ class LUD_Admin_Tesoreria {
             $this->render_historial_intereses();
         } elseif ( $view == 'editar_socio' ) {
             $this->render_editor_socio();
+        } elseif ( $view == 'presidencia' ) {
+            $this->render_panel_presidencia();
         } elseif ( $view == 'control_asistencia' ) {
             $this->render_control_asistencia();
         } elseif ( $view == 'configuracion_fondo' && current_user_can( 'manage_options' ) ) {
@@ -986,6 +992,96 @@ class LUD_Admin_Tesoreria {
     }
 
     /**
+     * Panel exclusivo de presidencia para aprobar/rechazar registros de nuevos socios.
+     */
+    private function render_panel_presidencia() {
+        if ( ! $this->usuario_es_presidencia() ) {
+            wp_die( 'Acceso restringido a Presidencia' );
+        }
+
+        global $wpdb;
+        $pendientes = $wpdb->get_results("
+            SELECT c.*, u.display_name, u.user_email
+            FROM {$wpdb->prefix}fondo_cuentas c
+            JOIN {$wpdb->users} u ON c.user_id = u.ID
+            WHERE c.estado_socio = 'pendiente'
+            ORDER BY c.fecha_ingreso_fondo ASC
+        ");
+
+        $historial = $wpdb->get_results("
+            SELECT t.*, u.display_name
+            FROM {$wpdb->prefix}fondo_transacciones t
+            JOIN {$wpdb->users} u ON t.user_id = u.ID
+            WHERE t.detalle LIKE '%ADMISION%'
+            ORDER BY t.fecha_registro DESC
+            LIMIT 20
+        ");
+
+        if ( isset( $_GET['msg'] ) && $_GET['msg'] === 'admision_ok' ) {
+            echo '<div class="notice notice-success"><p>✅ Solicitud actualizada.</p></div>';
+        } elseif ( isset( $_GET['msg'] ) && $_GET['msg'] === 'admision_err' ) {
+            echo '<div class="notice notice-error"><p>⚠️ Ocurrió un error al procesar la solicitud.</p></div>';
+        }
+        ?>
+        <div class="lud-card" style="margin-bottom:20px;">
+            <h3>🏛️ Solicitudes pendientes</h3>
+            <?php if ( empty( $pendientes ) ): ?>
+                <p style="color:#2e7d32;">No hay solicitudes en espera.</p>
+            <?php else: ?>
+                <table class="widefat striped">
+                    <thead><tr><th>Socio</th><th>Documento</th><th>Teléfono</th><th>Aporte inicial</th><th>Acciones</th></tr></thead>
+                    <tbody>
+                        <?php foreach ( $pendientes as $p ): ?>
+                            <tr>
+                                <td><strong><?php echo esc_html( $p->display_name ); ?></strong><br><small><?php echo esc_html( $p->user_email ); ?></small></td>
+                                <td><?php echo esc_html( $p->tipo_documento . ' ' . $p->numero_documento ); ?></td>
+                                <td><?php echo esc_html( $p->telefono_contacto ); ?></td>
+                                <td>$ <?php echo number_format( $p->aporte_inicial ); ?></td>
+                                <td>
+                                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                        <a href="<?php echo admin_url('admin-post.php?action=lud_ver_comprobante&file=documentos/'.$p->url_documento_id); ?>" target="_blank" class="button">📄 Documento</a>
+                                        <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>">
+                                            <input type="hidden" name="action" value="lud_aprobar_registro">
+                                            <input type="hidden" name="cuenta_id" value="<?php echo $p->id; ?>">
+                                            <?php wp_nonce_field('aprobar_socio_'.$p->id, 'security'); ?>
+                                            <button class="button button-primary">Aprobar</button>
+                                        </form>
+                                        <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="display:flex; flex-direction:column; gap:6px; min-width:200px;">
+                                            <input type="hidden" name="action" value="lud_rechazar_registro">
+                                            <input type="hidden" name="cuenta_id" value="<?php echo $p->id; ?>">
+                                            <?php wp_nonce_field('rechazar_socio_'.$p->id, 'security'); ?>
+                                            <textarea name="motivo_rechazo" rows="2" class="lud-input" placeholder="Motivo de rechazo" required></textarea>
+                                            <button class="button button-link-delete" onclick="return confirm('¿Rechazar solicitud?');">Rechazar</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </div>
+
+        <div class="lud-card">
+            <h3>🧾 Historial de decisiones</h3>
+            <?php if ( empty( $historial ) ): ?>
+                <p style="color:#777;">Sin movimientos de admisión registrados.</p>
+            <?php else: ?>
+                <ul style="margin:0; padding-left:18px;">
+                    <?php foreach ( $historial as $h ): ?>
+                        <li>
+                            <strong><?php echo esc_html( $h->display_name ); ?></strong>
+                            <span style="color:#555;">(<?php echo date_i18n('d/m/Y H:i', strtotime($h->fecha_registro)); ?>)</span><br>
+                            <small style="color:#666;"><?php echo esc_html( $h->detalle ); ?></small>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
      * Vista de configuración de correos y pruebas SMTP para administradores.
      */
     private function render_configuracion_fondo() {
@@ -1815,6 +1911,104 @@ class LUD_Admin_Tesoreria {
         }
 
         wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=control_asistencia&msg=asistencia_guardada' ) );
+        exit;
+    }
+
+    /**
+     * Aprueba una solicitud de ingreso y la marca como activa.
+     */
+    public function procesar_aprobacion_registro() {
+        if ( ! $this->usuario_es_presidencia() ) wp_die( 'Sin permisos' );
+        $cuenta_id = intval( $_POST['cuenta_id'] ?? 0 );
+        check_admin_referer( 'aprobar_socio_' . $cuenta_id, 'security' );
+
+        global $wpdb;
+        $cuenta = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE id = %d", $cuenta_id ) );
+        if ( ! $cuenta ) {
+            wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=presidencia&msg=admision_err' ) ); exit;
+        }
+
+        $wpdb->update(
+            "{$wpdb->prefix}fondo_cuentas",
+            array(
+                'estado_socio' => 'activo',
+                'fecha_ingreso_fondo' => $cuenta->fecha_ingreso_fondo ? $cuenta->fecha_ingreso_fondo : date( 'Y-m-d' )
+            ),
+            array( 'id' => $cuenta_id )
+        );
+
+        // Comentario: registrar bitácora en transacciones.
+        $wpdb->insert(
+            "{$wpdb->prefix}fondo_transacciones",
+            array(
+                'user_id' => $cuenta->user_id,
+                'tipo' => 'aporte',
+                'monto' => 0,
+                'metodo_pago' => 'admision',
+                'estado' => 'aprobado',
+                'detalle' => 'ADMISION: Aprobado por Presidencia',
+                'aprobado_por' => get_current_user_id(),
+                'fecha_registro' => current_time( 'mysql' ),
+                'fecha_aprobacion' => current_time( 'mysql' )
+            )
+        );
+
+        wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=presidencia&msg=admision_ok' ) );
+        exit;
+    }
+
+    /**
+     * Rechaza una solicitud de ingreso exigiendo motivo y notifica al solicitante.
+     */
+    public function procesar_rechazo_registro() {
+        if ( ! $this->usuario_es_presidencia() ) wp_die( 'Sin permisos' );
+        $cuenta_id = intval( $_POST['cuenta_id'] ?? 0 );
+        $motivo = sanitize_textarea_field( $_POST['motivo_rechazo'] ?? '' );
+        if ( empty( $motivo ) ) {
+            wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=presidencia&msg=admision_err' ) ); exit;
+        }
+        check_admin_referer( 'rechazar_socio_' . $cuenta_id, 'security' );
+
+        global $wpdb;
+        $cuenta = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE id = %d", $cuenta_id ) );
+        if ( ! $cuenta ) {
+            wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=presidencia&msg=admision_err' ) ); exit;
+        }
+
+        $wpdb->update(
+            "{$wpdb->prefix}fondo_cuentas",
+            array( 'estado_socio' => 'rechazado' ),
+            array( 'id' => $cuenta_id )
+        );
+
+        $detalle = 'ADMISION: Rechazado por Presidencia. Motivo: ' . $motivo;
+        $wpdb->insert(
+            "{$wpdb->prefix}fondo_transacciones",
+            array(
+                'user_id' => $cuenta->user_id,
+                'tipo' => 'aporte',
+                'monto' => 0,
+                'metodo_pago' => 'admision',
+                'estado' => 'rechazado',
+                'detalle' => $detalle,
+                'aprobado_por' => get_current_user_id(),
+                'fecha_registro' => current_time( 'mysql' ),
+                'fecha_aprobacion' => current_time( 'mysql' )
+            )
+        );
+
+        // Comentario: notificar por correo al solicitante con el motivo.
+        $usuario = get_userdata( $cuenta->user_id );
+        if ( $usuario && ! empty( $usuario->user_email ) ) {
+            $asunto = 'Resultado de tu solicitud de ingreso al Fondo La Unión';
+            $mensaje = "Hola {$usuario->display_name},\n\n"
+                     . "Tu solicitud fue rechazada.\n"
+                     . "Motivo: {$motivo}\n\n"
+                     . "Si necesitas más información, comunícate con Presidencia.";
+            wp_mail( $usuario->user_email, $asunto, $mensaje );
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=presidencia&msg=admision_ok' ) );
         exit;
     }
 
