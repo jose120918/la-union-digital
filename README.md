@@ -50,6 +50,9 @@ Creación gestionada por `LUD_DB_Installer`:
   - Verifica sanciones por mora (90 días), liquidez disponible y regla del 70% para refinanciación.
   - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%), mostrando interés total del crédito y cuota mensual.
   - Bloquea solicitudes de crédito corriente cuya cuota resultante sea menor a $50.000 (alerta visual y validación backend, conforme estatutos).
+  - Calcula y muestra un score de pago (0-100) con barra de viabilidad basada en cuotas pagadas y moras; se usa para priorizar la liberación de la cola de liquidez.
+  - La cola de liquidez libera primero a socios con mejor score y luego respeta la fecha de llegada.
+  - Bloquea corrientes en diciembre (Art. 8.1) y evita refinanciar un crédito que ya fue refinanciado una vez.
   - Solicita firma digital del socio y deudor solidario (canvas) y genera tokens de seguimiento.
   - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
@@ -94,6 +97,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - Programación de cambios de acciones aplicados automáticamente en `ejecutar_cambios_programados`.
   - Aprobación o rechazo de registros entrantes (`lud_aprobar_registro`, `lud_rechazar_registro`).
   - Entregas de secretaría (`lud_entregar_secretaria`) para reflejar salida de caja de ese concepto.
+- **Control de asistencia** (`view=control_asistencia`): pestaña para marcar presentes/ausentes en la asamblea; los ausentes reciben una multa pendiente de $10.000 con detalle “Inasistencia Asamblea (fecha)”.
 - **Historial de intereses:** consulta de utilidades liquidadas (`view=historial_intereses`).
 - **Configuración del fondo (solo administradores):** pestaña “⚙️ Configuración del Fondo” con dos bloques:
   - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
@@ -101,6 +105,13 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
 - **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado) y “Limpiar Datos de Prueba” (elimina únicamente esos usuarios y sus tablas relacionadas).
 - **Dashboard Tesorería:** lista de morosos ordenada A-Z, Caja Secretaría con recaudo del mes e histórico de entregas, y ficha de socio con fecha de incorporación y estado detallado de mora/al día.
+
+## Reglas y límites vigentes
+- Máximo 10 acciones por socio: la UI y el backend bloquean cantidades superiores al programar cambios desde Tesorería.
+- Límite de 36 socios activos: el registro público muestra “Cupos llenos” y el procesamiento server-side impide nuevas altas cuando se alcanza ese número.
+- Refinanciación única por crédito: si un crédito ya fue refinanciado, el sistema bloquea nuevos intentos y marca el origen en `datos_entrega`.
+- Créditos corrientes no se radican en diciembre (Art. 8.1); solo se permiten ágiles con aviso de entrega diferida.
+- El score de pago (0-100) prioriza la cola de liquidez y se muestra al socio antes de radicar la solicitud.
 
 ## Notificaciones automáticas y correos
 - Motor centralizado en `LUD_Notificaciones` con plantilla HTML unificada (saludo obligatorio con nombre + tipo/número de identificación).
