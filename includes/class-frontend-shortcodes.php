@@ -86,6 +86,37 @@ class LUD_Frontend_Shortcodes {
         
         $rendimientos_totales = floatval($datos->saldo_rendimientos) + floatval($acumulado_este_anio);
         $ahorro_total = number_format( $datos->saldo_ahorro_capital, 0, ',', '.' );
+
+        // Créditos vigentes para mostrar tarjeta resumen si aplica.
+        $creditos_vigentes = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = %d AND estado IN ('activo','mora','pendiente_tesoreria','fila_liquidez')",
+            $user_id
+        ) );
+        $resumen_creditos = array();
+        foreach ( $creditos_vigentes as $credito_vigente ) {
+            $monto_base = $credito_vigente->monto_aprobado > 0 ? $credito_vigente->monto_aprobado : $credito_vigente->monto_solicitado;
+            $cuota_base = $credito_vigente->cuota_estimada;
+            $fecha_fin = $wpdb->get_var( $wpdb->prepare(
+                "SELECT MAX(fecha_vencimiento) FROM {$wpdb->prefix}fondo_amortizacion WHERE credito_id = %d",
+                $credito_vigente->id
+            ) );
+
+            if ( ! $fecha_fin ) {
+                $fecha_base = ! empty( $credito_vigente->fecha_aprobacion ) ? new DateTime( $credito_vigente->fecha_aprobacion ) : new DateTime( $credito_vigente->fecha_solicitud );
+                $meses_plazo = max( 1, intval( $credito_vigente->plazo_meses ) );
+                $fecha_base->modify( '+' . $meses_plazo . ' months' );
+                $fecha_fin = $fecha_base->format( 'Y-m-d' );
+            }
+
+            $resumen_creditos[] = array(
+                'id' => $credito_vigente->id,
+                'monto' => $monto_base,
+                'cuota' => $cuota_base,
+                'fecha_fin' => $fecha_fin,
+                'estado' => $credito_vigente->estado,
+                'tipo' => $credito_vigente->tipo_credito
+            );
+        }
         
         ob_start();
         ?>
@@ -186,6 +217,33 @@ class LUD_Frontend_Shortcodes {
                     <?php endif; ?>
                 </div>
             </div>
+            <?php if ( ! empty( $resumen_creditos ) ): ?>
+            <div class="lud-card" style="margin-top:12px; background:#f0f4ff; border:1px solid #cfdafc;">
+                <div class="lud-header" style="margin-bottom:6px;">
+                    <h4 style="margin:0;"><?php echo count( $resumen_creditos ) > 1 ? 'Créditos Vigentes' : 'Crédito Vigente'; ?></h4>
+                    <span class="lud-badge pendiente">En curso</span>
+                </div>
+                <p style="color:#4a4a4a; font-size:0.9rem; margin-top:0;">Mostramos el monto aprobado, la cuota estimada y la fecha objetivo de cierre (esta fecha puede ajustarse si hay refinanciación).</p>
+                <?php foreach ( $resumen_creditos as $cred ): ?>
+                    <div style="background:#fff; border:1px dashed #c5cae9; padding:10px; border-radius:8px; margin-bottom:10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                            <div>
+                                <div style="font-weight:700; color:#1a237e;">Crédito #<?php echo $cred['id']; ?> · <?php echo ucfirst( $cred['tipo'] ); ?></div>
+                                <small style="color:#5c6bc0;">Estado: <?php echo ucfirst( $cred['estado'] ); ?></small>
+                            </div>
+                            <div style="text-align:right;">
+                                <span style="display:block; font-size:0.8rem; color:#666;">Monto aprobado</span>
+                                <strong style="font-size:1.1rem; color:#1b5e20;">$ <?php echo number_format( $cred['monto'], 0, ',', '.' ); ?></strong>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:8px;">
+                            <div style="color:#2e7d32; font-weight:600;">Cuota estimada: $ <?php echo number_format( $cred['cuota'], 0, ',', '.' ); ?></div>
+                            <div style="color:#37474f;">Fecha fin proyectada: <?php echo date_i18n( 'd M Y', strtotime( $cred['fecha_fin'] ) ); ?></div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
         </div>
         <?php
         return ob_get_clean();
@@ -233,34 +291,20 @@ class LUD_Frontend_Shortcodes {
                     </div>
                 <?php else: ?>
                     <?php foreach($movimientos as $m): ?>
-                        <?php $upload = wp_upload_dir(); ?>
-                        <?php $link = !empty($m->comprobante_url) ? trailingslashit($upload['baseurl']) . 'fondo_seguro/' . $m->comprobante_url : ''; ?>
-                        <div class="lud-card lud-mov-compacta">
-                            <div class="col-izq">
-                                <div style="font-weight:600; color:#444; display:flex; gap:8px; flex-wrap:wrap;">
-                                    <span><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></span>
-                                    <span style="color:#777;">ID: <?php echo 'TX-' . $m->id; ?></span>
-                                </div>
-                                <div style="font-size:0.9rem; color:#555; margin-top:4px;">
-                                    <?php if ( $link ): ?>
-                                        <a href="<?php echo esc_url( $link ); ?>" target="_blank" style="color:#1565c0; text-decoration:underline; font-size:0.9rem;">Ver comprobante</a>
-                                    <?php else: ?>
-                                        <span style="color:#999;">Sin comprobante adjunto</span>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                            <div class="col-der">
-                                <span class="lud-badge <?php echo strtolower($m->estado); ?>" style="font-size:0.8rem;"><?php echo ucfirst($m->estado); ?></span>
-                                <div style="font-size:1.2rem; font-weight:700; color:#1b5e20; margin-top:4px;">$ <?php echo number_format($m->monto); ?></div>
-                                <div style="font-size:0.85rem; color:#555;"><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></div>
-                            </div>
-                        </div>
+                        <?php echo $this->construir_tarjeta_movimiento( $m ); ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
             <?php if ( $hay_mas ): ?>
                 <button class="lud-btn" id="btn_cargar_mas" style="margin-top:10px; width:100%; background:#eee; color:#444; border:1px solid #ddd; box-shadow:none;">Cargar más</button>
             <?php endif; ?>
+        </div>
+        <div id="lud-modal-detalle" class="lud-modal" role="dialog" aria-modal="true" aria-label="Detalle de cambios">
+            <div class="lud-modal-contenido">
+                <button id="lud-modal-cerrar" aria-label="Cerrar detalle">×</button>
+                <h4>Datos modificados</h4>
+                <div id="lud-modal-detalle-texto" class="lud-modal-detalle-texto"></div>
+            </div>
         </div>
         <script>
             (function(){
@@ -299,15 +343,35 @@ class LUD_Frontend_Shortcodes {
                         });
                 }
 
-                const btnMas = document.getElementById('btn_cargar_mas');
-                if (btnMas) btnMas.addEventListener('click', function(){ cargarMas(false); });
+            const btnMas = document.getElementById('btn_cargar_mas');
+            if (btnMas) btnMas.addEventListener('click', function(){ cargarMas(false); });
 
-                const btnFiltrar = document.getElementById('btn_filtrar_hist');
-                if (btnFiltrar) btnFiltrar.addEventListener('click', function(){
-                    offset = perPage;
-                    cargarMas(true);
+            const btnFiltrar = document.getElementById('btn_filtrar_hist');
+            if (btnFiltrar) btnFiltrar.addEventListener('click', function(){
+                offset = perPage;
+                cargarMas(true);
+            });
+
+            // Modal para ver cambios de datos
+            const modal = document.getElementById('lud-modal-detalle');
+            const modalTexto = document.getElementById('lud-modal-detalle-texto');
+            const btnCerrar = document.getElementById('lud-modal-cerrar');
+
+            if (modal && modalTexto && btnCerrar) {
+                document.addEventListener('click', function(e){
+                    if(e.target.classList.contains('lud-btn-detalle')){
+                        e.preventDefault();
+                        const texto = e.target.getAttribute('data-detalle') || '';
+                        modalTexto.textContent = texto;
+                        modal.style.display = 'flex';
+                    }
+                    if(e.target === modal || e.target === btnCerrar){
+                        modal.style.display = 'none';
+                        modalTexto.textContent = '';
+                    }
                 });
-            })();
+            }
+        })();
         </script>
         <style>
             /* Comentario: estilos compactos para la lista de movimientos. */
@@ -317,7 +381,77 @@ class LUD_Frontend_Shortcodes {
             .lud-mov-compacta .col-izq { flex:1; min-width:0; }
             .lud-mov-compacta .col-der { text-align:right; min-width:140px; }
             .lud-mov-compacta small { color:#777; }
+            .lud-monto-texto { font-size:1rem; font-weight:700; color:#283593; margin-top:4px; }
+            .lud-monto-num { font-size:1.2rem; font-weight:700; color:#1b5e20; margin-top:4px; }
+            .lud-btn-detalle { background:#e3f2fd; color:#0d47a1; border:1px solid #bbdefb; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:0.85rem; }
+            .lud-btn-detalle:hover { background:#bbdefb; }
+            .lud-detalle-linea { font-size:0.85rem; color:#555; }
+            .lud-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); align-items:center; justify-content:center; z-index:9999; padding:10px; }
+            .lud-modal-contenido { background:#fff; padding:18px; border-radius:10px; max-width:520px; width:100%; box-shadow:0 8px 24px rgba(0,0,0,0.2); }
+            .lud-modal-contenido h4 { margin-top:0; }
+            .lud-modal-detalle-texto { white-space:pre-line; color:#333; line-height:1.5; font-size:0.95rem; }
+            #lud-modal-cerrar { float:right; border:none; background:none; font-size:1.2rem; cursor:pointer; color:#666; }
         </style>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Construye el HTML de una tarjeta de movimiento con lógica de enlaces seguros y detalles.
+     */
+    private function construir_tarjeta_movimiento( $movimiento ) {
+        $tiene_comprobante = ! empty( $movimiento->comprobante_url );
+        $link_seguro = $tiene_comprobante
+            ? admin_url( 'admin-post.php?action=lud_ver_comprobante&file=' . rawurlencode( $movimiento->comprobante_url ) )
+            : '';
+
+        $detalle_bruto = isset( $movimiento->detalle ) ? (string) $movimiento->detalle : '';
+        $concepto = $this->obtener_concepto_legible( $movimiento );
+        $texto_comprobante = ( $movimiento->tipo === 'desembolso_credito' ) ? 'Ver contrato' : 'Ver comprobante';
+        $es_actualizacion = ( $movimiento->tipo === 'actualizacion_datos'
+            || ( floatval( $movimiento->monto ) === 0 && ( stripos( $detalle_bruto, 'Actualización de datos' ) !== false || stripos( $detalle_bruto, 'ADMIN EDICIÓN' ) !== false ) )
+        );
+
+        $texto_monto = '$ ' . number_format( $movimiento->monto );
+        $clase_monto = 'lud-monto-num';
+        if ( $es_actualizacion ) {
+            $texto_monto = 'Actualización de datos';
+            $clase_monto = 'lud-monto-texto';
+            $concepto = 'Actualización de datos realizada';
+        }
+
+        $detalle_interactivo = '';
+        if ( ! empty( $detalle_bruto ) ) {
+            if ( $es_actualizacion ) {
+                $detalle_interactivo = '<button type="button" class="lud-btn-detalle" data-detalle="' . esc_attr( wp_strip_all_tags( $detalle_bruto ) ) . '">Ver cambios</button>';
+            } else {
+                $detalle_interactivo = '<div class="lud-detalle-linea">' . esc_html( $detalle_bruto ) . '</div>';
+            }
+        }
+
+        ob_start();
+        ?>
+        <div class="lud-card lud-mov-compacta" data-movimiento="<?php echo intval( $movimiento->id ); ?>">
+            <div class="col-izq">
+                <div style="font-weight:600; color:#444; display:flex; gap:8px; flex-wrap:wrap;">
+                    <span><?php echo date('d/m/Y', strtotime($movimiento->fecha_registro)); ?></span>
+                    <span style="color:#777;">ID: <?php echo 'TX-' . $movimiento->id; ?></span>
+                </div>
+                <div style="font-size:0.9rem; color:#555; margin-top:4px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                    <?php if ( $tiene_comprobante ): ?>
+                        <a href="<?php echo esc_url( $link_seguro ); ?>" target="_blank" rel="noopener" style="color:#1565c0; text-decoration:underline; font-size:0.9rem;"><?php echo esc_html( $texto_comprobante ); ?></a>
+                    <?php else: ?>
+                        <span style="color:#999;">Sin comprobante adjunto</span>
+                    <?php endif; ?>
+                    <?php echo $detalle_interactivo; ?>
+                </div>
+            </div>
+            <div class="col-der">
+                <span class="lud-badge <?php echo strtolower($movimiento->estado); ?>" style="font-size:0.8rem;"><?php echo ucfirst($movimiento->estado); ?></span>
+                <div class="<?php echo esc_attr( $clase_monto ); ?>"><?php echo esc_html( $texto_monto ); ?></div>
+                <div style="font-size:0.85rem; color:#555;"><?php echo esc_html( $concepto ); ?></div>
+            </div>
+        </div>
         <?php
         return ob_get_clean();
     }
@@ -333,6 +467,8 @@ class LUD_Frontend_Shortcodes {
             'multa' => 'Multa',
             'gasto_operativo' => 'Gasto Operativo',
             'ajuste_redondeo' => 'Ajuste',
+            'desembolso_credito' => 'Desembolso de crédito',
+            'actualizacion_datos' => 'Actualización de datos',
         );
         if ( isset( $mapa[ $movimiento->tipo ] ) ) return $mapa[ $movimiento->tipo ];
         return ucfirst( str_replace( '_', ' ', $movimiento->tipo ) );
@@ -367,30 +503,7 @@ class LUD_Frontend_Shortcodes {
 
         ob_start();
         foreach ( $rows as $m ) {
-            $upload = wp_upload_dir();
-            $link = !empty($m->comprobante_url) ? trailingslashit($upload['baseurl']) . 'fondo_seguro/' . $m->comprobante_url : '';
-            ?>
-            <div class="lud-card lud-mov-compacta">
-                <div class="col-izq">
-                    <div style="font-weight:600; color:#444; display:flex; gap:8px; flex-wrap:wrap;">
-                        <span><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></span>
-                        <span style="color:#777;">ID: <?php echo 'TX-' . $m->id; ?></span>
-                    </div>
-                    <div style="font-size:0.9rem; color:#555; margin-top:4px;">
-                        <?php if ( $link ): ?>
-                            <a href="<?php echo esc_url( $link ); ?>" target="_blank" style="color:#1565c0; text-decoration:underline; font-size:0.9rem;">Ver comprobante</a>
-                        <?php else: ?>
-                            <span style="color:#999;">Sin comprobante adjunto</span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <div class="col-der">
-                    <span class="lud-badge <?php echo strtolower($m->estado); ?>" style="font-size:0.8rem;"><?php echo ucfirst($m->estado); ?></span>
-                    <div style="font-size:1.2rem; font-weight:700; color:#1b5e20; margin-top:4px;">$ <?php echo number_format($m->monto); ?></div>
-                    <div style="font-size:0.85rem; color:#555;"><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></div>
-                </div>
-            </div>
-            <?php
+            echo $this->construir_tarjeta_movimiento( $m );
         }
         $html_rows = ob_get_clean();
         $has_more = ( $offset + $limite ) < $total;
