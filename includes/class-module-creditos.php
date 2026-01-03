@@ -118,6 +118,7 @@ class LUD_Module_Creditos {
         $saldo_pendiente = 0;
         $msg_refinanciacion = '';
         $bloqueo_70 = false;
+        $solo_credito_agil = false; // Comentario: si no cumple 70%, bloquea solo corrientes.
 
         if ( $credito_activo ) {
             $monto_prestado = floatval($credito_activo->monto_aprobado); // Usar el aprobado, no el solicitado
@@ -129,10 +130,11 @@ class LUD_Module_Creditos {
 
             if ( $porcentaje_pagado < 70 ) {
                 $bloqueo_70 = true;
+                $solo_credito_agil = true; // Comentario: puede pedir Ágil, pero no Corriente/refinanciación.
                 $msg_refinanciacion = '<div class="lud-alert error">
-                    <strong>⚠️ Tienes un crédito vigente</strong><br>
-                    Has pagado el <b>'.number_format($porcentaje_pagado, 1).'%</b> de tu crédito actual.<br>
-                    Los estatutos exigen haber pagado mínimo el <b>70%</b> para solicitar uno nuevo (Refinanciación).
+                    <strong>⚠️ Crédito vigente</strong><br>
+                    Has pagado el <b>'.number_format($porcentaje_pagado, 1).'%</b> de tu crédito corriente actual.<br>
+                    Para otro crédito corriente debes haber pagado mínimo el <b>70%</b>. Puedes solicitar un crédito Ágil independientemente.
                 </div>';
             } else {
                 $modo_refinanciacion = true;
@@ -143,8 +145,6 @@ class LUD_Module_Creditos {
                 </div>';
             }
         }
-
-        if ( $bloqueo_70 ) return '<div class="lud-card">'.$msg_refinanciacion.'</div>';
 
         // Topes finales
         $tope_corriente = min($capacidad_maxima, $liquidez);
@@ -208,8 +208,8 @@ class LUD_Module_Creditos {
                 <div class="lud-form-group">
                     <label class="lud-label">Tipo de Crédito</label>
                     <div class="lud-radio-group">
-                        <label class="lud-radio-card selected" id="opt_corriente">
-                            <input type="radio" name="tipo_credito" value="corriente" checked onchange="cambiarTipo('corriente')">
+                        <label class="lud-radio-card <?php echo $solo_credito_agil ? '' : 'selected'; ?>" id="opt_corriente">
+                            <input type="radio" name="tipo_credito" value="corriente" <?php echo $solo_credito_agil ? 'disabled' : 'checked'; ?> onchange="cambiarTipo('corriente')">
                             <div>
                                 <span class="lud-radio-title">🏢 Corriente (2% mes)</span>
                                 <span class="lud-radio-desc">Cupo Máx: $<?php echo number_format($tope_corriente,0); ?>. Plazo máx 36 meses.</span>
@@ -217,8 +217,8 @@ class LUD_Module_Creditos {
                         </label>
                         
                         <?php if(!$modo_refinanciacion): // No se puede pedir Ágil si se está refinanciando un Corriente ?>
-                        <label class="lud-radio-card" id="opt_agil">
-                            <input type="radio" name="tipo_credito" value="agil" onchange="cambiarTipo('agil')">
+                        <label class="lud-radio-card <?php echo $solo_credito_agil ? 'selected' : ''; ?>" id="opt_agil">
+                            <input type="radio" name="tipo_credito" value="agil" onchange="cambiarTipo('agil')" <?php echo $solo_credito_agil ? 'checked' : ''; ?>>
                             <div>
                                 <span class="lud-radio-title">⚡ Ágil (1.5% mes)</span>
                                 <span class="lud-radio-desc">Cupo Máx: $<?php echo number_format($tope_agil,0); ?>. Plazo fijo 1 mes.</span>
@@ -287,6 +287,7 @@ class LUD_Module_Creditos {
             const maxAgil = <?php echo $tope_agil; ?>;
             const saldoPendiente = parseFloat(document.getElementById('saldo_pendiente').value) || 0;
             const esRefinanciacion = (document.getElementById('modo_refinanciacion').value === '1');
+            const soloAgil = <?php echo $solo_credito_agil ? 'true' : 'false'; ?>;
 
             // --- CANVAS FIRMA ---
             var canvas = document.getElementById('signature-pad');
@@ -396,7 +397,11 @@ class LUD_Module_Creditos {
             canvas.addEventListener('mouseup', calcular); canvas.addEventListener('touchend', calcular);
             
             // Iniciar
-            cambiarTipo('corriente');
+            if (soloAgil) {
+                cambiarTipo('agil');
+            } else {
+                cambiarTipo('corriente');
+            }
         </script>
         <style>
             .lud-range { width: 100%; margin: 10px 0; accent-color: #1565c0; } 
@@ -447,11 +452,11 @@ class LUD_Module_Creditos {
 
         // 3. REGLA DEL 70% (Server-Side)
         $credito_activo = $wpdb->get_row( "SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id AND estado = 'activo' LIMIT 1" );
-        if ( $credito_activo ) {
+        if ( $credito_activo && $tipo === 'corriente' ) {
             $pagado = floatval($credito_activo->monto_aprobado) - floatval($credito_activo->saldo_actual);
             $pct = ($pagado / floatval($credito_activo->monto_aprobado)) * 100;
             
-            if ( $pct < 70 ) wp_die("Error: No cumples con el 70% pagado para refinanciar.");
+            if ( $pct < 70 ) wp_die("Error: No cumples con el 70% pagado para un nuevo crédito corriente.");
             
             // Si pasa, agregamos nota de refinanciación
             $aviso_diciembre .= " || REFINANCIACIÓN: Se cruza con Crédito #{$credito_activo->id}. Saldo anterior: $".number_format($credito_activo->saldo_actual);

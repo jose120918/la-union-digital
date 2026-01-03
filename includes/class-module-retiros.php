@@ -53,7 +53,7 @@ class LUD_Module_Retiros {
         global $wpdb;
         $user_id = get_current_user_id();
         $cuenta = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id ) );
-        if ( ! $cuenta ) return '<div class="lud-card"><p>No tienes ficha activa en el fondo.</p></div>';
+        if ( ! $cuenta ) return '<div class="lud-card"><div class="lud-header"><h3>Solicitud de Retiro</h3></div><p>No tienes ficha activa en el fondo.</p></div>';
 
         // Validar estado del socio
         if ( $cuenta->estado_socio === 'retirado' ) {
@@ -63,17 +63,19 @@ class LUD_Module_Retiros {
         // Verificar si hay solicitud pendiente
         $pendiente = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_retiros WHERE user_id = %d AND estado = 'pendiente'", $user_id ) );
         if ( $pendiente > 0 ) {
-            return '<div class="lud-card"><div class="lud-alert">📬 Tu solicitud de retiro está en revisión. La entrega se hará en la siguiente reunión si hay liquidez.</div></div>';
+            return '<div class="lud-card"><div class="lud-header"><h3>Solicitud de Retiro</h3></div><div class="lud-alert">📬 Tu solicitud de retiro está en revisión. La entrega se hará en la siguiente reunión si hay liquidez.</div></div>';
         }
 
         // Calcular deudas para paz y salvo
         $info_deuda = LUD_Module_Transacciones::calcular_deuda_usuario_estatico( $user_id );
-        if ( ! $info_deuda ) return '<div class="lud-card"><p>No se encontró información financiera.</p></div>';
+        if ( ! $info_deuda ) return '<div class="lud-card"><div class="lud-header"><h3>Solicitud de Retiro</h3></div><p>No se encontró información financiera.</p></div>';
 
         $deuda_total = $info_deuda['total_admin'] + $info_deuda['creditos'];
+        $bloqueado = false;
+        $mensaje_bloqueo = '';
         if ( $deuda_total > 0 ) {
-            $mensaje_deuda = "<div class='lud-alert error'><strong>⚠️ No cumples paz y salvo.</strong><br>Debes saldar <b>$".number_format($deuda_total, 0, ',', '.')."</b> antes de solicitar el retiro (Art. 14).</div>";
-            return "<div class='lud-card'>$mensaje_deuda</div>";
+            $bloqueado = true;
+            $mensaje_bloqueo = "<strong>⚠️ No cumples paz y salvo.</strong><br>Debes saldar <b>$".number_format($deuda_total, 0, ',', '.')."</b> antes de solicitar el retiro (Art. 14).";
         }
 
         // Calcular rendimientos acumulados
@@ -101,6 +103,9 @@ class LUD_Module_Retiros {
             </div>
 
             <?php echo $mensaje_estado; ?>
+            <?php if ( $bloqueado ): ?>
+                <div class="lud-alert error" style="margin-bottom:15px;"><?php echo $mensaje_bloqueo; ?></div>
+            <?php endif; ?>
 
             <div class="lud-success-box lud-success-compacta" style="margin-bottom:15px;">
                 <span class="lud-icono-estado" aria-hidden="true">💡</span>
@@ -132,16 +137,16 @@ class LUD_Module_Retiros {
 
                 <div class="lud-form-group">
                     <label class="lud-label">Motivo del retiro</label>
-                    <textarea name="detalle" class="lud-input" rows="3" placeholder="Ej: Cambio de residencia, necesidad personal..." required></textarea>
+                    <textarea name="detalle" class="lud-input" rows="3" placeholder="Ej: Cambio de residencia, necesidad personal..." <?php echo $bloqueado ? 'disabled' : 'required'; ?>></textarea>
                 </div>
 
                 <label class="lud-checkbox-moderno">
-                    <input type="checkbox" name="aceptacion_reglamento" value="1" required>
+                    <input type="checkbox" name="aceptacion_reglamento" value="1" <?php echo $bloqueado ? 'disabled' : 'required'; ?>>
                     <span class="lud-checkbox-caja" aria-hidden="true"></span>
                     <span class="lud-checkbox-texto">Acepto que podré solicitar reingreso a la asamblea dos meses después del retiro.</span>
                 </label>
 
-                <button type="submit" class="lud-btn">Enviar solicitud</button>
+                <button type="submit" class="lud-btn" <?php echo $bloqueado ? 'disabled style="opacity:0.6; cursor:not-allowed;"' : ''; ?>>Enviar solicitud</button>
             </form>
         </div>
         <?php
@@ -177,15 +182,15 @@ class LUD_Module_Retiros {
         // Revisar créditos activos
         $credito_activo = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_creditos WHERE user_id = %d AND estado IN ('activo','mora','pendiente_tesoreria','pendiente_deudor')", $user_id ) );
         if ( $credito_activo > 0 ) {
-            wp_redirect( add_query_arg( 'lud_error', 'No puedes retirarte con créditos vigentes. Liquida tus obligaciones.', wp_get_referer() ) );
-            exit;
+            $bloqueado = true;
+            $mensaje_bloqueo .= "<div class='lud-alert error' style='margin-top:8px;'><strong>⚠️ Crédito activo.</strong><br>No puedes retirarte con créditos vigentes.</div>";
         }
 
         // Evitar duplicados pendientes
         $pendiente = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_retiros WHERE user_id = %d AND estado = 'pendiente'", $user_id ) );
         if ( $pendiente > 0 ) {
-            wp_redirect( add_query_arg( 'lud_error', 'Ya tienes una solicitud en trámite.', wp_get_referer() ) );
-            exit;
+            $bloqueado = true;
+            $mensaje_bloqueo .= "<br>📬 Ya tienes una solicitud en trámite.";
         }
 
         $wpdb->insert(

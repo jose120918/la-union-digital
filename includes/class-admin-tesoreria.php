@@ -693,6 +693,7 @@ class LUD_Admin_Tesoreria {
         
         $tx_module = new LUD_Module_Transacciones(); 
         $deuda_info = $tx_module->calcular_deuda_usuario($user_id);
+        $estado_general = ($deuda_info['total_admin'] + $deuda_info['creditos'] > 0) ? 'En Mora' : 'Al Día';
 
         // Verificar si hay cambio programado
         $cambio_pendiente = get_user_meta($user_id, 'lud_acciones_programadas', true);
@@ -709,10 +710,16 @@ class LUD_Admin_Tesoreria {
                 </div>
                 <br>
                 <table style="width:100%; text-align:left;">
+                    <tr><th>Documento:</th><td><?php echo esc_html($cuenta->tipo_documento . ' ' . $cuenta->numero_documento); ?></td></tr>
+                    <tr><th>Correo:</th><td><?php echo esc_html($user->user_email); ?></td></tr>
+                    <tr><th>Teléfono:</th><td><?php echo esc_html($cuenta->telefono_contacto); ?></td></tr>
+                    <tr><th>Dirección:</th><td><?php echo esc_html($cuenta->direccion_residencia); ?></td></tr>
+                    <tr><th>Ciudad:</th><td><?php echo esc_html($cuenta->ciudad_pais); ?></td></tr>
                     <tr><th>Acciones Hoy:</th><td><?php echo $cuenta->numero_acciones; ?></td></tr>
-                    <tr><th>Estado:</th><td><?php echo ucfirst($cuenta->estado_socio); ?></td></tr>
-                    <tr><th>Beneficiario:</th><td><?php echo $cuenta->beneficiario_nombre; ?></td></tr>
-                    <tr><th>Contacto Ben:</th><td><?php echo isset($cuenta->beneficiario_telefono) ? $cuenta->beneficiario_telefono : '-'; ?></td></tr>
+                    <tr><th>Estado Socio:</th><td><?php echo ucfirst($cuenta->estado_socio); ?></td></tr>
+                    <tr><th>Fecha de Incorporación:</th><td><?php echo $cuenta->fecha_ingreso_fondo ? date_i18n('d M Y', strtotime($cuenta->fecha_ingreso_fondo)) : 'N/D'; ?></td></tr>
+                    <tr><th>Beneficiario:</th><td><?php echo esc_html($cuenta->beneficiario_nombre); ?> (<?php echo esc_html($cuenta->beneficiario_parentesco); ?>)</td></tr>
+                    <tr><th>Contacto Ben:</th><td><?php echo isset($cuenta->beneficiario_telefono) ? esc_html($cuenta->beneficiario_telefono) : '-'; ?></td></tr>
                 </table>
             </div>
 
@@ -737,6 +744,19 @@ class LUD_Admin_Tesoreria {
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="lud-card" style="margin-top:15px; background:#f7f9fb;">
+            <h3>📌 Estado de Cuenta Detallado</h3>
+            <p><strong>Estado:</strong> <?php echo $estado_general; ?></p>
+            <ul style="margin-left:18px;">
+                <?php if ( $deuda_info['ahorro'] > 0 ): ?><li>Ahorro en mora: $<?php echo number_format($deuda_info['ahorro']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['secretaria'] > 0 ): ?><li>Cuota Secretaría pendiente: $<?php echo number_format($deuda_info['secretaria']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['multa'] > 0 ): ?><li>Multa por mora: $<?php echo number_format($deuda_info['multa']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['creditos'] > 0 ): ?><li>Créditos (capital+intereses): $<?php echo number_format($deuda_info['creditos']); ?></li><?php endif; ?>
+                <?php if ( $deuda_info['creditos'] == 0 && $deuda_info['total_admin'] == 0 ): ?><li>Sin pendientes de cobro.</li><?php endif; ?>
+                <li>Último aporte registrado: <?php echo $cuenta->fecha_ultimo_aporte ? date_i18n('d M Y', strtotime($cuenta->fecha_ultimo_aporte)) : 'No registrado'; ?></li>
+            </ul>
         </div>
 
         <div class="lud-card" style="margin-top:20px; border-left:5px solid #2980b9;">

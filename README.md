@@ -54,7 +54,9 @@ Creación gestionada por `LUD_DB_Installer`:
   - Si la liquidez es insuficiente, registra la solicitud en una fila de espera y la libera automáticamente a Tesorería en cuanto haya cupo, manteniendo el orden de llegada.
 - `[lud_zona_deudor]`: área donde el codeudor visualiza y firma la solicitud, cambiando el crédito a `pendiente_tesoreria`.
 - `[lud_resumen_ahorro]`: tarjeta de ahorro con estado “Al día/Pendiente”, deudas calculadas y rendimientos anuales.
+- En “Mi Ahorro” se desglosan periodos en mora con días de retraso, se muestra el contador total de días/meses y la fecha de incorporación al fondo.
 - `[lud_historial]`: últimos movimientos del socio con notas, estados y desglose aprobado.
+- Historial con filtros por fecha, conceptos legibles, paginación AJAX, columna de acciones para ver comprobantes y carga incremental si hay más de 3 ítems.
 - `[lud_perfil_datos]`: captura y guarda beneficiario (cumplimiento estatutario art. 22).
 - `[lud_registro_socio]`: formulario de ingreso para nuevos socios, incluyendo PDF de identidad y datos KYC.
 - `[lud_retiro_voluntario]` (`LUD_Module_Retiros::render_formulario_retiro`):
@@ -98,6 +100,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
 - **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
 - **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado) y “Limpiar Datos de Prueba” (elimina únicamente esos usuarios y sus tablas relacionadas).
+- **Dashboard Tesorería:** lista de morosos ordenada A-Z, Caja Secretaría con recaudo del mes e histórico de entregas, y ficha de socio con fecha de incorporación y estado detallado de mora/al día.
 
 ## Notificaciones automáticas y correos
 - Motor centralizado en `LUD_Notificaciones` con plantilla HTML unificada (saludo obligatorio con nombre + tipo/número de identificación).

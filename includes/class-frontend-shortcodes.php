@@ -17,6 +17,8 @@ class LUD_Frontend_Shortcodes {
         add_shortcode( 'lud_historial', array( $this, 'render_historial_movimientos' ) );
         add_shortcode( 'lud_perfil_datos', array( $this, 'render_perfil_beneficiario' ) ); 
         add_action( 'admin_post_lud_guardar_perfil', array( $this, 'procesar_guardado_perfil' ) );
+        // Ajax para historial paginado
+        add_action( 'wp_ajax_lud_historial_mov', array( $this, 'ajax_historial_movimientos' ) );
         // --- NUEVOS SHORTCODES ---
         add_shortcode( 'lud_registro_socio', array( $this, 'render_formulario_registro' ) );
         add_action( 'admin_post_nopriv_lud_procesar_registro', array( $this, 'procesar_registro_nuevo' ) );
@@ -43,6 +45,7 @@ class LUD_Frontend_Shortcodes {
         
         // --- 1. CÁLCULO DEUDA ---
         $debe_ahorro = 0; $debe_secretaria = 0; $debe_multa = 0;
+        $detalle_mora = []; // Comentario: lista de periodos en mora con días y valor.
         $fecha_ultimo = $datos->fecha_ultimo_aporte ? $datos->fecha_ultimo_aporte : date('Y-m-01'); 
         $inicio = new DateTime( $fecha_ultimo );
         $inicio->modify( 'first day of next month' ); 
@@ -56,10 +59,17 @@ class LUD_Frontend_Shortcodes {
             if ( $hoy > $limite_mes ) {
                 $dias_tarde = $hoy->diff( $limite_mes )->days;
                 $debe_multa += ($dias_tarde * 1000 * $acciones);
+                $detalle_mora[] = array(
+                    'periodo' => $cursor->format('F Y'),
+                    'dias'    => $dias_tarde,
+                    'monto'   => $dias_tarde * 1000 * $acciones
+                );
             }
             $cursor->modify( 'first day of next month' );
         }
         $total_pendiente = $debe_ahorro + $debe_secretaria + $debe_multa;
+        $total_dias_mora = array_sum( array_map( function( $m ){ return $m['dias']; }, $detalle_mora ) );
+        $conteo_meses_mora = count( $detalle_mora );
 
         // --- 2. CÁLCULO RENDIMIENTOS DINÁMICO ---
         $anio_actual = date('Y');
@@ -78,7 +88,7 @@ class LUD_Frontend_Shortcodes {
             <div class="lud-header">
                 <h3>Mi Ahorro</h3>
                 <span class="lud-badge <?php echo $total_pendiente > 0 ? 'pendiente' : 'aldia'; ?>">
-                    <?php echo $total_pendiente > 0 ? 'Pendiente' : 'Al día'; ?>
+                    <?php echo $total_pendiente > 0 ? 'En Mora' : 'Al día'; ?>
                 </span>
             </div>
 
@@ -86,13 +96,24 @@ class LUD_Frontend_Shortcodes {
                 <span class="lud-label">Total Ahorrado</span>
                 <span class="lud-amount">$ <?php echo $ahorro_total; ?></span>
             </div>
+            <p style="margin-top:8px; color:#666; font-size:0.9rem;">Activo desde: <?php echo $datos->fecha_ingreso_fondo ? date_i18n('d M Y', strtotime($datos->fecha_ingreso_fondo)) : 'Sin registro'; ?></p>
 
             <?php if ( $total_pendiente > 0 ): ?>
             <div class="lud-debt-box">
-                <h4>⚠️ Tienes pagos pendientes</h4>
+                <h4>⚠️ Tienes pagos en mora (<?php echo $conteo_meses_mora; ?> periodo<?php echo $conteo_meses_mora != 1 ? 's' : ''; ?> / <?php echo $total_dias_mora; ?> día<?php echo $total_dias_mora != 1 ? 's' : ''; ?>)</h4>
                 <div class="lud-debt-row"><span>Ahorro:</span><span>$ <?php echo number_format($debe_ahorro); ?></span></div>
                 <div class="lud-debt-row"><span>Secretaría:</span><span>$ <?php echo number_format($debe_secretaria); ?></span></div>
                 <?php if ($debe_multa > 0): ?><div class="lud-debt-row"><span>Mora:</span><span>$ <?php echo number_format($debe_multa); ?></span></div><?php endif; ?>
+                <?php if ( !empty($detalle_mora) ): ?>
+                    <div style="margin-top:10px; font-size:0.85rem; color:#8d6e63;">
+                        <strong>Detalle de periodos en mora:</strong>
+                        <ul style="margin:6px 0 0 16px; padding:0;">
+                            <?php foreach ( $detalle_mora as $mora ): ?>
+                                <li><?php echo esc_html( $mora['periodo'] ); ?> · <?php echo $mora['dias']; ?> día<?php echo $mora['dias'] != 1 ? 's' : ''; ?> · $<?php echo number_format( $mora['monto'] ); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
                 <div class="lud-debt-total"><span>Total a Pagar:</span><span>$ <?php echo number_format($total_pendiente); ?></span></div>
             </div>
             <?php else: ?>
@@ -128,58 +149,183 @@ class LUD_Frontend_Shortcodes {
         $user_id = get_current_user_id();
         $tabla_tx = $wpdb->prefix . 'fondo_transacciones';
 
-        $movimientos = $wpdb->get_results( $wpdb->prepare( 
-            "SELECT * FROM $tabla_tx WHERE user_id = %d ORDER BY fecha_registro DESC LIMIT 10", 
-            $user_id 
+        $limite = 3;
+        $movimientos = $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM $tabla_tx WHERE user_id = %d ORDER BY fecha_registro DESC LIMIT %d",
+            $user_id, $limite
         ));
+        $total_movs = intval( $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $tabla_tx WHERE user_id = %d", $user_id ) ) );
+        $hay_mas = $total_movs > $limite;
+        $nonce_hist = wp_create_nonce( 'lud_historial_nonce' );
 
         ob_start();
         ?>
         <div class="lud-card">
             <div class="lud-header"><h3>Últimos Movimientos</h3></div>
+            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:flex-end;">
+                <div>
+                    <label class="lud-label">Desde</label>
+                    <input type="date" id="hist_desde" class="lud-input" style="min-height:40px;">
+                </div>
+                <div>
+                    <label class="lud-label">Hasta</label>
+                    <input type="date" id="hist_hasta" class="lud-input" style="min-height:40px;">
+                </div>
+                <button class="lud-btn" id="btn_filtrar_hist" style="width:auto; padding:10px 18px; margin:0;">Filtrar</button>
+            </div>
             <?php if ( empty($movimientos) ): ?>
                 <div style="text-align:center; padding:20px; color:#777; background:#fafafa; border-radius:8px;">
                     <span style="font-size:2rem;">📭</span><br>No hay movimientos registrados aún.
                 </div>
             <?php else: ?>
-                <div class="lud-history-list">
-                    <?php foreach ( $movimientos as $tx ): 
-                        $fecha = date_i18n( 'd M, Y', strtotime( $tx->fecha_registro ) );
-                        $monto_total = number_format( $tx->monto, 0, ',', '.' );
-                        
-                        $status_label = ($tx->estado == 'pendiente') ? '⏳ Revisando...' : (($tx->estado == 'rechazado') ? '❌ Rechazado' : '✅ Aprobado');
-                        $status_class = ($tx->estado == 'pendiente') ? 'status-pending' : (($tx->estado == 'rechazado') ? 'status-rejected' : 'status-approved');
-                        $icono_main = ($tx->estado == 'pendiente') ? '📤' : (($tx->estado == 'rechazado') ? '🚫' : '💵');
-
-                        $parts = explode( '|| PROCESADO:', $tx->detalle );
-                        $nota_raw = str_replace('|', '', isset($parts[0]) ? $parts[0] : '');
-                        $desglose_financiero = isset($parts[1]) ? $parts[1] : '';
-                        
-                        $hubo_excedente = (strpos($desglose_financiero, 'Abono Extra') !== false || strpos($desglose_financiero, 'Excedente') !== false || strpos($desglose_financiero, 'Capital Crédito') !== false);
-                        if ( $tx->estado == 'aprobado' && !$hubo_excedente ) {
-                            $nota_raw = preg_replace('/Pref: \[.*?\]/', '', $nota_raw);
-                        }
-                        $nota_final = trim(str_replace(['Pref: [BAJAR CUOTA]', 'Pref: [REDUCIR PLAZO]'], ['<span class="pref-tag">📉 Bajar Cuota</span>', '<span class="pref-tag">⏳ Menos Plazo</span>'], $nota_raw));
-                    ?>
-                    <div class="lud-history-item">
-                        <div class="lud-hist-top">
-                            <div class="lud-hist-date-group">
-                                <span class="hist-icon"><?php echo $icono_main; ?></span>
-                                <div><div class="hist-date"><?php echo $fecha; ?></div><div class="hist-status <?php echo $status_class; ?>"><?php echo $status_label; ?></div></div>
-                            </div>
-                            <div class="hist-total">$ <?php echo $monto_total; ?></div>
-                        </div>
-                        <?php if ( !empty($nota_final) ): ?><div class="lud-hist-note"><?php echo $nota_final; ?></div><?php endif; ?>
-                        <?php if ( $tx->estado == 'aprobado' && !empty($desglose_financiero) ): ?>
-                        <div class="lud-hist-breakdown"><strong>Distribución:</strong><ul><?php foreach(explode(',', $desglose_financiero) as $item): ?><li><?php echo trim($item); ?></li><?php endforeach; ?></ul></div>
-                        <?php endif; ?>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
+                <table class="lud-table">
+                    <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th>Estado</th><th>Detalle</th><th>Acciones</th></tr></thead>
+                    <tbody id="historial_body">
+                        <?php foreach($movimientos as $m): ?>
+                        <tr>
+                            <td><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></td>
+                            <td><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></td>
+                            <td>$ <?php echo number_format($m->monto); ?></td>
+                            <td><?php echo ucfirst($m->estado); ?></td>
+                            <td><?php echo $m->detalle; ?></td>
+                            <td>
+                                <?php if ( !empty($m->comprobante_url) ): ?>
+                                    <?php $upload = wp_upload_dir(); ?>
+                                    <a href="<?php echo esc_url( trailingslashit($upload['baseurl']) . 'fondo_seguro/' . $m->comprobante_url ); ?>" target="_blank" class="lud-btn" style="width:auto; padding:6px 10px; font-size:0.85rem;">Ver</a>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if ( $hay_mas ): ?>
+                    <button class="lud-btn" id="btn_cargar_mas" style="margin-top:10px; width:100%; background:#eee; color:#444; border:1px solid #ddd; box-shadow:none;">Cargar más</button>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
+        <script>
+            (function(){
+                const ajaxUrl = "<?php echo admin_url('admin-ajax.php'); ?>";
+                const nonce = "<?php echo $nonce_hist; ?>";
+                let offset = <?php echo $limite; ?>;
+                const perPage = <?php echo $limite; ?>;
+
+                function renderRows(rowsHtml, append=true){
+                    const tbody = document.getElementById('historial_body');
+                    if (!tbody) return;
+                    if (!append) tbody.innerHTML = '';
+                    tbody.insertAdjacentHTML( append ? 'beforeend' : 'afterbegin', rowsHtml );
+                }
+
+                function cargarMas(reset=false){
+                    const desde = document.getElementById('hist_desde').value;
+                    const hasta = document.getElementById('hist_hasta').value;
+                    const data = new URLSearchParams();
+                    data.append('action','lud_historial_mov');
+                    data.append('nonce', nonce);
+                    data.append('offset', reset ? 0 : offset);
+                    data.append('limite', perPage);
+                    data.append('desde', desde);
+                    data.append('hasta', hasta);
+
+                    fetch(ajaxUrl, { method:'POST', body:data, credentials:'same-origin' })
+                        .then(r=>r.json())
+                        .then(res=>{
+                            if(res && res.rows){
+                                renderRows(res.rows, !reset);
+                                offset = reset ? res.next_offset : offset + perPage;
+                                const btn = document.getElementById('btn_cargar_mas');
+                                if(btn){ btn.style.display = res.has_more ? 'block' : 'none'; }
+                            }
+                        });
+                }
+
+                const btnMas = document.getElementById('btn_cargar_mas');
+                if (btnMas) btnMas.addEventListener('click', function(){ cargarMas(false); });
+
+                const btnFiltrar = document.getElementById('btn_filtrar_hist');
+                if (btnFiltrar) btnFiltrar.addEventListener('click', function(){
+                    offset = perPage;
+                    cargarMas(true);
+                });
+            })();
+        </script>
         <?php
         return ob_get_clean();
+    }
+
+    /**
+     * Devuelve un texto legible para el tipo de movimiento.
+     */
+    private function obtener_concepto_legible( $movimiento ) {
+        $mapa = array(
+            'pago_consolidado' => 'Pago reportado',
+            'aporte' => 'Aporte',
+            'cuota_credito' => 'Cuota de crédito',
+            'multa' => 'Multa',
+            'gasto_operativo' => 'Gasto Operativo',
+            'ajuste_redondeo' => 'Ajuste',
+        );
+        if ( isset( $mapa[ $movimiento->tipo ] ) ) return $mapa[ $movimiento->tipo ];
+        return ucfirst( str_replace( '_', ' ', $movimiento->tipo ) );
+    }
+
+    /**
+     * Responde el historial vía AJAX para paginación sin recargar.
+     */
+    public function ajax_historial_movimientos() {
+        if ( ! is_user_logged_in() ) wp_send_json_error( 'No autorizado' );
+        check_ajax_referer( 'lud_historial_nonce', 'nonce' );
+
+        global $wpdb;
+        $user_id = get_current_user_id();
+        $offset = intval( $_POST['offset'] ?? 0 );
+        $limite = intval( $_POST['limite'] ?? 3 );
+        $desde = sanitize_text_field( $_POST['desde'] ?? '' );
+        $hasta = sanitize_text_field( $_POST['hasta'] ?? '' );
+
+        $tabla_tx = $wpdb->prefix . 'fondo_transacciones';
+        $where = $wpdb->prepare( "WHERE user_id = %d", $user_id );
+
+        if ( !empty($desde) ) {
+            $where .= $wpdb->prepare( " AND DATE(fecha_registro) >= %s", $desde );
+        }
+        if ( !empty($hasta) ) {
+            $where .= $wpdb->prepare( " AND DATE(fecha_registro) <= %s", $hasta );
+        }
+
+        $rows = $wpdb->get_results( "SELECT * FROM $tabla_tx $where ORDER BY fecha_registro DESC LIMIT $limite OFFSET $offset" );
+        $total = intval( $wpdb->get_var( "SELECT COUNT(*) FROM $tabla_tx $where" ) );
+
+        ob_start();
+        foreach ( $rows as $m ) {
+            $upload = wp_upload_dir();
+            $link = '';
+            if ( !empty($m->comprobante_url) ) {
+                $link = '<a href="'.esc_url( trailingslashit($upload['baseurl']) . 'fondo_seguro/' . $m->comprobante_url ).'" target=\"_blank\" class=\"lud-btn\" style=\"width:auto; padding:6px 10px; font-size:0.85rem;\">Ver</a>';
+            } else {
+                $link = '-';
+            }
+            ?>
+            <tr>
+                <td><?php echo date('d/m/Y', strtotime($m->fecha_registro)); ?></td>
+                <td><?php echo esc_html( $this->obtener_concepto_legible( $m ) ); ?></td>
+                <td>$ <?php echo number_format($m->monto); ?></td>
+                <td><?php echo ucfirst($m->estado); ?></td>
+                <td><?php echo $m->detalle; ?></td>
+                <td><?php echo $link; ?></td>
+            </tr>
+            <?php
+        }
+        $html_rows = ob_get_clean();
+        $has_more = ( $offset + $limite ) < $total;
+        wp_send_json( array(
+            'rows' => $html_rows,
+            'has_more' => $has_more,
+            'next_offset' => $offset + $limite
+        ) );
     }
 
     // --- CARD 3: PERFIL BENEFICIARIO (CORREGIDO) ---
