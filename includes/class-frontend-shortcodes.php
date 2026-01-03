@@ -472,6 +472,12 @@ class LUD_Frontend_Shortcodes {
      */
     public function render_formulario_registro() {
         if ( is_user_logged_in() ) return '<div class="lud-alert success">Ya tienes una sesión activa. No necesitas registrarte de nuevo.</div>';
+        global $wpdb;
+        $cupos_ocupados = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'" ) );
+        if ( $cupos_ocupados >= 36 ) {
+            return '<div class="lud-card" style="text-align:center;">🛑 <strong>Cupos llenos</strong><br>Actualmente hay 36 socios activos según los estatutos. Vuelve a intentarlo cuando se libere un cupo.</div>';
+        }
+        
         $msg = '';
         if ( isset($_GET['lud_reg']) && $_GET['lud_reg'] == 'ok' ) {
             return '<div class="lud-card" style="text-align:center;">
@@ -575,6 +581,12 @@ class LUD_Frontend_Shortcodes {
      */
     public function procesar_registro_nuevo() {
         if ( ! isset( $_POST['lud_security'] ) || ! wp_verify_nonce( $_POST['lud_security'], 'lud_registro_nonce' ) ) wp_die('Seguridad');
+
+        global $wpdb;
+        $cupos_ocupados = intval( $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE estado_socio = 'activo'" ) );
+        if ( $cupos_ocupados >= 36 ) {
+            wp_redirect( add_query_arg( 'lud_err', 'Cupos llenos', wp_get_referer() ) ); exit;
+        }
 
         $email = sanitize_email($_POST['email']);
         $documento = sanitize_text_field($_POST['numero_documento']);
