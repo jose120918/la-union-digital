@@ -1429,6 +1429,7 @@ class LUD_Debug_Tools {
         $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['categoria' => 'test_dashboard', 'descripcion' => 'TEST KPIs Dashboard ' . $transaccion_prueba]);
     }
 
+
     // --- HELPER: RESUMEN FINANCIERO EXPRESS ---
     /**
      * Obtiene un resumen numérico del estado del fondo para validarlo en pruebas.
