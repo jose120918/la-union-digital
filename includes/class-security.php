@@ -51,11 +51,7 @@ class LUD_Security {
 
         if ( ! $es_directiva ) {
             global $wpdb;
-            $es_comprobante = (bool) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = %d AND comprobante_url = %s",
-                $usuario_actual,
-                $ruta_relativa
-            ) );
+            $es_comprobante = $this->usuario_posee_comprobante( $usuario_actual, $ruta_relativa );
             $es_documento = (bool) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d AND url_documento_id = %s",
                 $usuario_actual,
@@ -76,5 +72,52 @@ class LUD_Security {
         header( 'Content-Disposition: inline; filename="' . basename( $file_path ) . '"' );
         readfile( $file_path );
         exit;
+    }
+
+    /**
+     * Verifica si el usuario es propietario de algún comprobante que incluya la ruta solicitada.
+     */
+    private function usuario_posee_comprobante( $user_id, $ruta_relativa ) {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'fondo_transacciones';
+
+        $coincide = (bool) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM $tabla WHERE user_id = %d AND (comprobante_url = %s OR comprobante_url LIKE %s)",
+            $user_id,
+            $ruta_relativa,
+            '%' . $wpdb->esc_like( $ruta_relativa ) . '%'
+        ) );
+
+        if ( $coincide ) {
+            return true;
+        }
+
+        $todos = $wpdb->get_col( $wpdb->prepare( "SELECT comprobante_url FROM $tabla WHERE user_id = %d", $user_id ) );
+        foreach ( $todos as $comp ) {
+            $segmentos = $this->dividir_comprobantes( $comp );
+            if ( in_array( $ruta_relativa, $segmentos, true ) ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Divide múltiples rutas de comprobante separadas por "|".
+     */
+    private function dividir_comprobantes( $comprobante_url ) {
+        $partes = array_filter( array_map( 'trim', explode( '|', (string) $comprobante_url ) ) );
+        $rutas = array();
+
+        foreach ( $partes as $parte ) {
+            $segmentos = array_filter( array_map( 'sanitize_file_name', explode( '/', $parte ) ) );
+            if ( empty( $segmentos ) ) {
+                continue;
+            }
+            $rutas[] = implode( '/', $segmentos );
+        }
+
+        return $rutas;
     }
 }

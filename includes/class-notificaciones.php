@@ -226,13 +226,18 @@ class LUD_Notificaciones {
     public function manejar_decision_credito( $user_id, $estado, $credito_id, $datos_entrega, $adjunto = '' ) {
         $correo = get_userdata( $user_id );
         $estado_legible = ucfirst( str_replace( '_', ' ', $estado ) );
-        $adjuntos = $adjunto ? array( $adjunto ) : array();
+        $adjuntos = array();
+        if ( is_array( $adjunto ) ) {
+            $adjuntos = array_filter( $adjunto );
+        } elseif ( ! empty( $adjunto ) ) {
+            $adjuntos[] = $adjunto;
+        }
 
         $mensaje_base = '<p>Crédito <strong>#' . intval( $credito_id ) . '</strong> actualizado a estado <strong>' . esc_html( $estado_legible ) . '</strong>.</p>';
 
         if ( $estado === 'activo' ) {
             $mensaje_base .= '<p>Instrucciones de entrega: <strong>' . esc_html( $datos_entrega ) . '</strong>.</p>'
-                           . '<p>Incluimos el contrato firmado en PDF para tu respaldo.</p>';
+                           . '<p>Incluimos el contrato firmado y el pagaré con su carta de instrucciones en PDF para tu respaldo.</p>';
         } elseif ( $estado === 'rechazado' ) {
             $mensaje_base .= '<p>La solicitud fue rechazada. Motivo: <strong>' . esc_html( $datos_entrega ) . '</strong></p>';
         } else {

@@ -82,8 +82,13 @@ Creación gestionada por `LUD_DB_Installer`:
 3. Se envía correo al deudor solidario con token (`codigo_seguimiento`).
 4. Deudor firma en `[lud_zona_deudor]`; el crédito pasa a `pendiente_tesoreria` con fecha de aprobación de deudor.
 5. Si en el paso 1 no había liquidez suficiente, la solicitud queda en `fila_liquidez` y se promueve automáticamente a `pendiente_tesoreria` en cuanto el cupo del fondo lo permite, respetando el orden de solicitud.
-6. Tesorería desembolsa, genera contrato PDF (si TCPDF está disponible) con huella forense y avanza estado.
-7. Se registra el desembolso como movimiento aprobado en el historial del socio, adjuntando el contrato firmado para descarga segura.
+6. Tesorería desembolsa, genera contrato PDF robusto (si TCPDF está disponible) con huella forense y avanza estado. También crea el pagaré con su carta de instrucciones firmado por deudor y deudor solidario.
+7. Se registra el desembolso como movimiento aprobado en el historial del socio, adjuntando contrato y pagaré/carta para descarga segura.
+
+## Contratos y títulos valor
+- El contrato de mutuo se genera como PDF con cláusulas de aceleración, imputación de pagos, reporte a centrales y mérito ejecutivo. Incluye datos del crédito (monto, tasa, plazo, IP y agente) y firmas del solicitante y deudor solidario.
+- El pagaré se acompaña de la carta de instrucciones en un mismo PDF, firmado por ambos. El valor se calcula con capital + intereses estimados y fecha de vencimiento estimada (día 5 según acta del 21 de septiembre de 2024).
+- Ambos archivos se guardan en `uploads/fondo_seguro/contratos/` y se registran en el movimiento de desembolso para descarga segura desde el historial y Tesorería.
 
 ## Panel de Tesorería
 Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):

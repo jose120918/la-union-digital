@@ -22,6 +22,7 @@ class LUD_Module_Creditos {
 
         // Ajustes de esquema y cola de liquidez
         $this->asegurar_estado_fila_liquidez();
+        $this->asegurar_columnas_documentos();
         add_action( 'init', array( $this, 'liberar_fila_por_liquidez' ) );
     }
 
@@ -860,7 +861,7 @@ class LUD_Module_Creditos {
     }
 
     /**
-     * Genera el contrato PDF final de un crédito aprobado.
+     * Genera el paquete de documentos PDF de un crédito aprobado (contrato y pagaré con carta de instrucciones).
      */
     public static function generar_pdf_final_static($credito_row) {
         // Busca TCPDF
@@ -876,26 +877,47 @@ class LUD_Module_Creditos {
         $deudor = get_userdata($credito_row->deudor_solidario_id);
         $upload = wp_upload_dir();
         $firmas_base = $upload['basedir'] . '/fondo_seguro/firmas/';
+        $pdf_dir = $upload['basedir'] . '/fondo_seguro/contratos/';
+        if (!file_exists($pdf_dir)) mkdir($pdf_dir, 0755, true);
 
+        $datos_doc = self::preparar_datos_documentos( $credito_row, $user, $deudor );
+        if ( empty( $datos_doc ) ) {
+            return false;
+        }
+
+        // --- CONTRATO DE MUTUO ---
         $pdf = new TCPDF();
         $pdf->SetCreator('Fondo La Unión');
         $pdf->SetPrintHeader(false);
         $pdf->AddPage();
 
-        $html = "<h1>CONTRATO DE MUTUO #{$credito_row->id}</h1>
-                 <p>Entre el Fondo de Inversión y el socio <b>{$user->display_name}</b> (Deudor) y <b>{$deudor->display_name}</b> (Deudor Solidario)...</p>
-                 <p><b>Monto Aprobado:</b> $".number_format($credito_row->monto_solicitado)."</p>
-                 <p><b>Entrega del dinero:</b> {$credito_row->datos_entrega}</p>
+        $html = "<h1 style=\"text-align:center;\">Contrato de Mutuo de Dinero No {$datos_doc['numero_contrato']}</h1>
+                 <p style=\"text-align:justify;\">Entre <strong>FONDO DE INVERSIÓN LA UNIÓN</strong>, con domicilio en Villa del Rosario, Norte de Santander, quien para efectos de este contrato se denomina <strong>EL FONDO</strong>, por una parte, y por la otra <strong>{$datos_doc['deudor_nombre']}</strong>, identificado(a) con {$datos_doc['deudor_documento']} y domicilio en {$datos_doc['deudor_domicilio']}, quien se denomina <strong>EL DEUDOR</strong>; y <strong>{$datos_doc['fiador_nombre']}</strong>, identificado(a) con {$datos_doc['fiador_documento']} y domicilio en {$datos_doc['fiador_domicilio']}, quien actúa como <strong>DEUDOR SOLIDARIO</strong>, se celebra el presente contrato de mutuo regido por las siguientes cláusulas:</p>
+                 <h3>Cláusulas</h3>
+                 <ol style=\"text-align:justify; font-size:10pt; line-height:1.4;\">
+                    <li><strong>Objeto y desembolso.</strong> EL FONDO entrega en calidad de mutuo a EL DEUDOR la suma de <strong>{$datos_doc['monto_formateado']}</strong> ({$datos_doc['monto_letras']}). El desembolso se realiza conforme a: <em>{$datos_doc['detalle_entrega']}</em>. EL DEUDOR declara haber recibido a satisfacción el capital.</li>
+                    <li><strong>Plazo y forma de pago.</strong> EL DEUDOR pagará el capital en <strong>{$datos_doc['plazo_meses']} cuota(s)</strong> iguales de capital más intereses. La primera cuota vencerá el <strong>{$datos_doc['fecha_primera_cuota']}</strong>, de conformidad con el acta del 21 de septiembre de 2024 (pago el día 5 del mes subsiguiente), y las siguientes el día 5 de cada mes, salvo que se acuerde por escrito otra fecha.</li>
+                    <li><strong>Interés remuneratorio.</strong> La tasa pactada es de <strong>{$datos_doc['tasa_interes_texto']} mensual</strong>, dentro de los topes legales vigentes. El interés total estimado sobre el capital asciende a <strong>{$datos_doc['interes_total_formateado']}</strong>, para un total esperado de <strong>{$datos_doc['total_general_formateado']}</strong>.</li>
+                    <li><strong>Interés de mora.</strong> El retraso en cualquier cuota causará interés moratorio a la <strong>tasa máxima legal permitida</strong> certificada por la Superintendencia Financiera, o a la tasa especial de mora definida en los estatutos si es superior para créditos ágiles, sin superar el tope de usura. El pago de intereses moratorios no implica novación ni renuncia al cobro del capital.</li>
+                    <li><strong>Cláusula aceleratoria.</strong> El incumplimiento en el pago de una sola cuota o interés faculta a EL FONDO para declarar vencidas todas las obligaciones y exigir de inmediato el saldo total adeudado, sin necesidad de requerimiento adicional.</li>
+                    <li><strong>Aplicación de pagos.</strong> Todo pago se imputará primero a costos judiciales y extrajudiciales (si los hubiere), luego a intereses de mora, intereses corrientes y finalmente a capital. EL FONDO podrá compensar saldos en favor del deudor con obligaciones vencidas.</li>
+                    <li><strong>Garantía personal y solidaridad.</strong> El DEUDOR SOLIDARIO responde de manera <strong>solidaria e indivisible</strong> por la totalidad de las obligaciones, capital, intereses y costos de cobro, renunciando a los beneficios de excusión, división y orden.</li>
+                    <li><strong>Seguros y autorizaciones.</strong> Las partes autorizan a EL FONDO a reportar el comportamiento de pago a centrales de riesgo, consultar información en bases de datos y conservar copia digital de firmas, huellas y evidencias técnicas de firma.</li>
+                    <li><strong>Mérito ejecutivo.</strong> Este contrato y el pagaré anexo constituyen título ejecutivo conforme al Código General del Proceso. La mora se acreditará con certificación de saldo expedida por Tesorería.</li>
+                    <li><strong>Notificaciones y domicilio.</strong> Las comunicaciones se enviarán al correo registrado por cada parte en el Fondo o a la dirección física indicada. El domicilio contractual es Villa del Rosario, Norte de Santander.</li>
+                    <li><strong>Vigencia y ley aplicable.</strong> El contrato se rige por la ley colombiana y los estatutos del Fondo. Cualquier controversia será competencia de los jueces de Villa del Rosario.</li>
+                 </ol>
                  <br>
-                 <table cellpadding=\"5\" style=\"font-size:9px; color:#555; border:1px solid #ccc;\">
+                 <table cellpadding=\"6\" style=\"font-size:9px; color:#555; border:1px solid #ccc;\">
                     <tr>
-                        <td><b>HUELLA DE SEGURIDAD DIGITAL</b><br>
-                        Firmado desde IP: {$credito_row->ip_registro}<br>
-                        Dispositivo: {$credito_row->user_agent}<br>
-                        Fecha/Hora Servidor: {$credito_row->fecha_solicitud}</td>
+                        <td><strong>Datos del crédito</strong><br>
+                        Tipo: {$datos_doc['tipo_credito']}<br>
+                        Cuota estimada: {$datos_doc['cuota_estimada']}<br>
+                        Vencimiento estimado: {$datos_doc['fecha_vencimiento']}<br>
+                        Huella digital: IP {$datos_doc['ip']} · Agente {$datos_doc['user_agent']} · Fecha {$datos_doc['fecha_solicitud']}</td>
                     </tr>
                  </table>
-                 <br><br>";
+                 <br><p>En constancia se firma digitalmente el {$datos_doc['fecha_contrato']}.</p>";
         
         $pdf->writeHTML($html, true, false, true, false, '');
 
@@ -909,11 +931,209 @@ class LUD_Module_Creditos {
             $pdf->Text(90, $y+25, 'Firma Deudor Solidario');
         }
 
-        $pdf_dir = $upload['basedir'] . '/fondo_seguro/contratos/';
-        if (!file_exists($pdf_dir)) mkdir($pdf_dir, 0755, true);
-        $name = "contrato_{$credito_row->id}_{$credito_row->codigo_seguimiento}.pdf";
-        $pdf->Output($pdf_dir . $name, 'F');
-        
-        return $name;
+        $nombre_contrato = "contrato_{$credito_row->id}_{$credito_row->codigo_seguimiento}.pdf";
+        $pdf->Output($pdf_dir . $nombre_contrato, 'F');
+
+        // --- PAGARÉ + CARTA DE INSTRUCCIONES ---
+        $pagare = new TCPDF();
+        $pagare->SetCreator('Fondo La Unión');
+        $pagare->SetPrintHeader(false);
+        $pagare->AddPage();
+
+        $html_pagare = "<h1 style=\"text-align:center;\">Pagaré No {$datos_doc['numero_contrato']}</h1>
+                        <p style=\"text-align:justify;\">Yo, <strong>{$datos_doc['deudor_nombre']}</strong> ({$datos_doc['deudor_documento']}), me obligo a pagar incondicionalmente a la orden de <strong>FONDO DE INVERSIÓN LA UNIÓN</strong>, en Villa del Rosario, la suma de <strong>{$datos_doc['total_general_formateado']}</strong> ({$datos_doc['total_general_letras']}) a más tardar el <strong>{$datos_doc['fecha_vencimiento']}</strong>. El crédito devenga interés remuneratorio del <strong>{$datos_doc['tasa_interes_texto']} mensual</strong> y en mora la tasa máxima legal vigente certificada por la Superintendencia Financiera, o la tasa especial de mora definida en los estatutos para créditos ágiles sin exceder la usura.</p>
+                        <p style=\"text-align:justify;\">Faculto a EL FONDO para declarar exigible la totalidad de la deuda por incumplimiento de una cuota (cláusula aceleratoria), sin requerimiento adicional. Renuncio a presentaciones y protestos. Lugar de pago: Villa del Rosario, Norte de Santander.</p>
+                        <p style=\"text-align:justify;\">DEUDOR SOLIDARIO: <strong>{$datos_doc['fiador_nombre']}</strong> ({$datos_doc['fiador_documento']}) responde solidariamente por esta obligación, capital e intereses, renunciando a los beneficios de excusión y división.</p>
+                        <table cellpadding=\"6\" style=\"font-size:9px; color:#555; border:1px solid #ccc;\">
+                            <tr><td><strong>Fecha de desembolso:</strong> {$datos_doc['fecha_contrato']}</td></tr>
+                            <tr><td><strong>Vencimiento estimado:</strong> {$datos_doc['fecha_vencimiento']}</td></tr>
+                            <tr><td><strong>Valor del pagaré:</strong> {$datos_doc['total_general_formateado']} ({$datos_doc['total_general_letras']})</td></tr>
+                        </table>";
+        $pagare->writeHTML($html_pagare, true, false, true, false, '');
+
+        $y_pagare = $pagare->GetY() + 10;
+        if($credito_row->firma_solicitante && file_exists($firmas_base.$credito_row->firma_solicitante)) {
+            $pagare->Image($firmas_base.$credito_row->firma_solicitante, 15, $y_pagare, 50, '', 'PNG');
+            $pagare->Text(15, $y_pagare+25, 'Firma Deudor');
+        }
+        if($credito_row->firma_deudor && file_exists($firmas_base.$credito_row->firma_deudor)) {
+            $pagare->Image($firmas_base.$credito_row->firma_deudor, 90, $y_pagare, 50, '', 'PNG');
+            $pagare->Text(90, $y_pagare+25, 'Firma Deudor Solidario');
+        }
+
+        // Carta de instrucciones
+        $pagare->AddPage();
+        $html_carta = "<h2 style=\"text-align:center;\">Carta de Instrucciones para Diligenciamiento del Pagaré</h2>
+                       <p style=\"text-align:justify;\">Yo, <strong>{$datos_doc['deudor_nombre']}</strong> ({$datos_doc['deudor_documento']}), autorizo irrevocablemente a <strong>FONDO DE INVERSIÓN LA UNIÓN</strong> para que complete los espacios en blanco del Pagaré No {$datos_doc['numero_contrato']} suscrito a su favor, en los siguientes términos:</p>
+                       <ol style=\"text-align:justify; font-size:10pt; line-height:1.4;\">
+                            <li>El valor a diligenciar corresponderá al saldo insoluto de capital más intereses remuneratorios y de mora causados a la fecha de incumplimiento, sin exceder los topes legales.</li>
+                            <li>La fecha de vencimiento que se coloque será la del momento en que EL FONDO declare exigible la totalidad de la obligación por mora o aceleración.</li>
+                            <li>Se podrán incluir costos y gastos de cobranza judicial o extrajudicial, de acuerdo con la normatividad colombiana.</li>
+                            <li>Autorizo el uso de mis datos personales para la gestión de cobranza y reporte en centrales de riesgo, conforme a la política de tratamiento de datos del Fondo.</li>
+                       </ol>
+                       <p style=\"text-align:justify;\">Esta carta se firma en la misma fecha de desembolso: {$datos_doc['fecha_contrato']}.</p>";
+        $pagare->writeHTML($html_carta, true, false, true, false, '');
+
+        $y_carta = $pagare->GetY() + 10;
+        if($credito_row->firma_solicitante && file_exists($firmas_base.$credito_row->firma_solicitante)) {
+            $pagare->Image($firmas_base.$credito_row->firma_solicitante, 15, $y_carta, 50, '', 'PNG');
+            $pagare->Text(15, $y_carta+25, 'Firma Deudor');
+        }
+        if($credito_row->firma_deudor && file_exists($firmas_base.$credito_row->firma_deudor)) {
+            $pagare->Image($firmas_base.$credito_row->firma_deudor, 90, $y_carta, 50, '', 'PNG');
+            $pagare->Text(90, $y_carta+25, 'Firma Deudor Solidario');
+        }
+
+        $nombre_pagare = "pagare_{$credito_row->id}_{$credito_row->codigo_seguimiento}.pdf";
+        $pagare->Output($pdf_dir . $nombre_pagare, 'F');
+
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'fondo_creditos',
+            array(
+                'contrato_pdf' => $nombre_contrato,
+                'pagare_pdf'   => $nombre_pagare
+            ),
+            array( 'id' => $credito_row->id )
+        );
+
+        return array(
+            'contrato' => $nombre_contrato,
+            'pagare'   => $nombre_pagare
+        );
+    }
+
+    /**
+     * Asegura las columnas de contratos y pagares en la tabla de créditos.
+     */
+    private function asegurar_columnas_documentos() {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'fondo_creditos';
+        $col_contrato = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM $tabla LIKE %s", 'contrato_pdf' ) );
+        $col_pagare   = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM $tabla LIKE %s", 'pagare_pdf' ) );
+
+        if ( ! $col_contrato ) {
+            $wpdb->query( "ALTER TABLE $tabla ADD contrato_pdf VARCHAR(255) NULL AFTER datos_entrega" );
+        }
+        if ( ! $col_pagare ) {
+            $wpdb->query( "ALTER TABLE $tabla ADD pagare_pdf VARCHAR(255) NULL AFTER contrato_pdf" );
+        }
+    }
+
+    /**
+     * Prepara datos formateados y consistentes para los documentos legales del crédito.
+     */
+    private static function preparar_datos_documentos( $credito_row, $user, $deudor ) {
+        global $wpdb;
+        if ( ! $credito_row || ! $user || ! $deudor ) {
+            return array();
+        }
+
+        $cuenta_deudor = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d",
+            $credito_row->user_id
+        ) );
+        $cuenta_fiador = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d",
+            $credito_row->deudor_solidario_id
+        ) );
+
+        $monto = floatval( $credito_row->monto_aprobado ?: $credito_row->monto_solicitado );
+        $plazo = intval( $credito_row->plazo_meses );
+        $tasa = floatval( $credito_row->tasa_interes );
+        $interes_mensual = round( $monto * ( $tasa / 100 ), 2 );
+        $interes_total = round( $interes_mensual * $plazo, 2 );
+        $total_general = round( $monto + $interes_total, 2 );
+
+        $fecha_base = new DateTime( current_time('mysql') );
+        $fecha_base->modify('+2 months');
+        $fecha_base->setDate($fecha_base->format('Y'), $fecha_base->format('m'), 5);
+        $fecha_primera = clone $fecha_base;
+        $fecha_vencimiento = clone $fecha_base;
+        if ( $plazo > 1 ) {
+            $fecha_vencimiento->modify('+' . ( $plazo - 1 ) . ' months');
+            $fecha_vencimiento->setDate($fecha_vencimiento->format('Y'), $fecha_vencimiento->format('m'), 5);
+        }
+
+        $monto_letras = self::convertir_numero_a_letras( $monto );
+        $total_letras = self::convertir_numero_a_letras( $total_general );
+
+        return array(
+            'numero_contrato'        => $credito_row->id,
+            'deudor_nombre'          => $user->display_name,
+            'deudor_documento'       => trim( ( $cuenta_deudor ? $cuenta_deudor->tipo_documento : '' ) . ' ' . ( $cuenta_deudor ? $cuenta_deudor->numero_documento : '' ) ),
+            'deudor_domicilio'       => $cuenta_deudor && $cuenta_deudor->ciudad_pais ? $cuenta_deudor->ciudad_pais : 'Villa del Rosario, Norte de Santander',
+            'fiador_nombre'          => $deudor->display_name,
+            'fiador_documento'       => trim( ( $cuenta_fiador ? $cuenta_fiador->tipo_documento : '' ) . ' ' . ( $cuenta_fiador ? $cuenta_fiador->numero_documento : '' ) ),
+            'fiador_domicilio'       => $cuenta_fiador && $cuenta_fiador->ciudad_pais ? $cuenta_fiador->ciudad_pais : 'Villa del Rosario, Norte de Santander',
+            'monto_formateado'       => '$' . number_format( $monto, 0, ',', '.' ),
+            'monto_letras'           => $monto_letras,
+            'interes_total_formateado' => '$' . number_format( $interes_total, 0, ',', '.' ),
+            'total_general_formateado' => '$' . number_format( $total_general, 0, ',', '.' ),
+            'total_general_letras'   => $total_letras,
+            'plazo_meses'            => $plazo,
+            'tasa_interes_texto'     => number_format( $tasa, 2 ) . '%',
+            'detalle_entrega'        => $credito_row->datos_entrega ?: 'Entrega según instrucciones de Tesorería',
+            'fecha_primera_cuota'    => $fecha_primera->format('d/m/Y'),
+            'fecha_vencimiento'      => $fecha_vencimiento->format('d/m/Y'),
+            'tipo_credito'           => ucfirst( $credito_row->tipo_credito ),
+            'cuota_estimada'         => '$' . number_format( $credito_row->cuota_estimada, 0, ',', '.' ),
+            'ip'                     => $credito_row->ip_registro,
+            'user_agent'             => $credito_row->user_agent,
+            'fecha_solicitud'        => $credito_row->fecha_solicitud,
+            'fecha_contrato'         => date_i18n( 'd/m/Y' ),
+            'total_general'          => $total_general
+        );
+    }
+
+    /**
+     * Convierte un número a letras en español (formato pesos).
+     */
+    private static function convertir_numero_a_letras( $numero ) {
+        $entero = floor( $numero );
+        $decimales = round( ( $numero - $entero ) * 100 );
+
+        $unidades = array('', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte');
+        $decenas = array('', '', 'veinti', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa');
+        $centenas = array('', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos');
+
+        $palabras = function( $n ) use ( $unidades, $decenas, $centenas, &$palabras ) {
+            if ( $n == 0 ) return 'cero';
+            if ( $n == 100 ) return 'cien';
+            $texto = '';
+            if ( $n >= 100 ) {
+                $texto .= $centenas[ intval( $n / 100 ) ] . ' ';
+                $n = $n % 100;
+            }
+            if ( $n <= 20 ) {
+                $texto .= $unidades[ $n ];
+            } else {
+                $texto .= $decenas[ intval( $n / 10 ) ];
+                $unidad = $n % 10;
+                if ( $unidad > 0 ) {
+                    $texto .= ( $n < 30 ? '' : ' y ' ) . $unidades[ $unidad ];
+                }
+            }
+            return trim( $texto );
+        };
+
+        $convertir_miles = function( $n ) use ( $palabras ) {
+            if ( $n < 1000 ) return $palabras( $n );
+            if ( $n < 1000000 ) {
+                $miles = intval( $n / 1000 );
+                $resto = $n % 1000;
+                $prefijo = $miles == 1 ? 'mil' : $palabras( $miles ) . ' mil';
+                return trim( $prefijo . ' ' . ( $resto ? $palabras( $resto ) : '' ) );
+            }
+            $millones = intval( $n / 1000000 );
+            $resto = $n % 1000000;
+            $prefijo = $millones == 1 ? 'un millón' : $palabras( $millones ) . ' millones';
+            return trim( $prefijo . ' ' . ( $resto ? $palabras( $resto ) : '' ) );
+        };
+
+        $texto_entero = $convertir_miles( $entero );
+        $texto_centavos = str_pad( $decimales, 2, '0', STR_PAD_LEFT );
+
+        return strtoupper( $texto_entero . ' pesos M/CTE (' . $texto_centavos . '/100)' );
     }
 }
