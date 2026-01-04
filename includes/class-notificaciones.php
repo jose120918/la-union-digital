@@ -103,8 +103,9 @@ class LUD_Notificaciones {
 
     /**
      * Arma la plantilla HTML común reutilizada en todos los correos.
+     * Público para reutilizar la misma estética en vistas previas y pruebas.
      */
-    private function armar_html( $user_id, $titulo, $contenido, $cta = array() ) {
+    public function armar_html( $user_id, $titulo, $contenido, $cta = array() ) {
         $config  = $this->obtener_configuracion();
         $saludo  = $this->obtener_saludo( $user_id );
         $logo    = $config['logo_url'] ? '<img src="' . esc_url( $config['logo_url'] ) . '" alt="Logo Fondo La Unión" style="max-width:180px; margin-bottom:20px;">' : '';
