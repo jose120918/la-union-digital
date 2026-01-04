@@ -519,7 +519,7 @@ class LUD_Admin_Tesoreria {
                                 <small><?php echo date_i18n('d/M', strtotime($tx->fecha_registro)); ?></small>
                             </td>
                             <td style="text-align:right;">
-                                <a href="<?php echo admin_url('admin-post.php?action=lud_ver_comprobante&file='.$tx->comprobante_url); ?>" target="_blank" class="button" title="Clic para ver la foto del recibo que subió el socio.">Ver Foto</a>
+                                <?php echo $this->construir_enlaces_comprobantes( $tx->comprobante_url, 'Ver archivo' ); ?>
                                 
                                 <div style="margin-top:5px;">
                                     <?php if ( $puede_editar ): ?>
@@ -872,12 +872,7 @@ class LUD_Admin_Tesoreria {
                     <td>
                         <?php
                         // Comentario: Si existe un archivo de comprobante, se muestra enlace directo al upload seguro.
-                        if ( !empty($t->comprobante_url) ) {
-                            $ruta_segura = admin_url( 'admin-post.php?action=lud_ver_comprobante&file=' . rawurlencode( $t->comprobante_url ) );
-                            echo '<a href="'.esc_url($ruta_segura).'" target="_blank" rel="noopener">Ver archivo</a>';
-                        } else {
-                            echo '-';
-                        }
+                        echo $this->construir_enlaces_comprobantes( $t->comprobante_url );
                         ?>
                     </td>
                 </tr>
@@ -1454,13 +1449,31 @@ class LUD_Admin_Tesoreria {
 
         require_once LUD_PLUGIN_DIR . 'includes/class-module-creditos.php';
         $credito_actualizado = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE id=$id");
-        $pdf_name = LUD_Module_Creditos::generar_pdf_final_static($credito_actualizado);
+        $documentos_pdf = LUD_Module_Creditos::generar_pdf_final_static($credito_actualizado);
 
-        $adjunto_ruta = $pdf_name ? WP_CONTENT_DIR . "/uploads/fondo_seguro/contratos/$pdf_name" : '';
-        do_action( 'lud_evento_credito_decision', $credito->user_id, 'activo', $id, $entrega, $adjunto_ruta );
+        $adjuntos = array();
+        if ( is_array( $documentos_pdf ) ) {
+            if ( ! empty( $documentos_pdf['contrato'] ) ) {
+                $adjuntos[] = WP_CONTENT_DIR . "/uploads/fondo_seguro/contratos/" . $documentos_pdf['contrato'];
+            }
+            if ( ! empty( $documentos_pdf['pagare'] ) ) {
+                $adjuntos[] = WP_CONTENT_DIR . "/uploads/fondo_seguro/contratos/" . $documentos_pdf['pagare'];
+            }
+        }
+
+        do_action( 'lud_evento_credito_decision', $credito->user_id, 'activo', $id, $entrega, $adjuntos );
 
         // Registrar el desembolso en el historial del socio con contrato firmado.
-        $nombre_comprobante = $pdf_name ? 'contratos/' . sanitize_file_name( $pdf_name ) : '';
+        $comprobantes_guardados = array();
+        if ( is_array( $documentos_pdf ) ) {
+            if ( ! empty( $documentos_pdf['contrato'] ) ) {
+                $comprobantes_guardados[] = 'contratos/' . sanitize_file_name( $documentos_pdf['contrato'] );
+            }
+            if ( ! empty( $documentos_pdf['pagare'] ) ) {
+                $comprobantes_guardados[] = 'contratos/' . sanitize_file_name( $documentos_pdf['pagare'] );
+            }
+        }
+        $nombre_comprobante = implode( '|', array_filter( $comprobantes_guardados ) );
         $detalle_desembolso = 'Desembolso de crédito #' . $id . ' (' . $credito->tipo_credito . ')';
 
         $wpdb->insert(
@@ -2164,6 +2177,49 @@ class LUD_Admin_Tesoreria {
         lud_notificaciones()->enviar_correo_prueba( $destino );
         wp_redirect( admin_url( 'admin.php?page=lud-tesoreria&view=configuracion_fondo&conf=test' ) );
         exit;
+    }
+
+    /**
+     * Descompone múltiples comprobantes guardados en una sola columna.
+     */
+    private function dividir_comprobantes_multiples( $comprobante_url ) {
+        $partes = array_filter( array_map( 'trim', explode( '|', (string) $comprobante_url ) ) );
+        $rutas_limpias = array();
+
+        foreach ( $partes as $parte ) {
+            $segmentos = array_filter( array_map( 'sanitize_file_name', explode( '/', $parte ) ) );
+            if ( empty( $segmentos ) ) {
+                continue;
+            }
+            $rutas_limpias[] = implode( '/', $segmentos );
+        }
+
+        return $rutas_limpias;
+    }
+
+    /**
+     * Construye enlaces HTML seguros para uno o varios comprobantes.
+     */
+    private function construir_enlaces_comprobantes( $comprobante_url, $texto_unico = 'Ver archivo' ) {
+        $rutas = $this->dividir_comprobantes_multiples( $comprobante_url );
+        if ( empty( $rutas ) ) {
+            return '-';
+        }
+
+        $enlaces = array();
+        foreach ( $rutas as $ruta ) {
+            $etiqueta = $texto_unico;
+            if ( stripos( $ruta, 'pagare' ) !== false ) {
+                $etiqueta = 'Ver pagaré';
+            } elseif ( stripos( $ruta, 'contrato' ) !== false ) {
+                $etiqueta = 'Ver contrato';
+            }
+
+            $url = admin_url( 'admin-post.php?action=lud_ver_comprobante&file=' . rawurlencode( $ruta ) );
+            $enlaces[] = '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener">' . esc_html( $etiqueta ) . '</a>';
+        }
+
+        return implode( '<br>', $enlaces );
     }
 
 } // FIN DE LA CLASE
