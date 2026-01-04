@@ -20,6 +20,7 @@ class LUD_Debug_Tools {
         add_action( 'admin_post_lud_run_tests', array( $this, 'ejecutar_bateria_pruebas' ) );
         add_action( 'admin_post_lud_seed_datos', array( $this, 'sembrar_datos_prueba' ) );
         add_action( 'admin_post_lud_limpiar_seed', array( $this, 'limpiar_datos_prueba' ) );
+        add_action( 'admin_post_lud_enviar_prev_documentos', array( $this, 'enviar_vista_previa_documentos' ) );
     }
 
     /**
@@ -37,6 +38,8 @@ class LUD_Debug_Tools {
         $datos_transitorio = get_transient( 'lud_test_logs' );
         $logs = '';
         $resumen = [];
+        $mensaje_flash = isset( $_GET['lud_notice'] ) ? sanitize_text_field( $_GET['lud_notice'] ) : '';
+        $tipo_flash = isset( $_GET['lud_notice_tipo'] ) ? sanitize_text_field( $_GET['lud_notice_tipo'] ) : 'info';
 
         if ( is_array( $datos_transitorio ) ) {
             $logs = isset( $datos_transitorio['texto'] ) ? $datos_transitorio['texto'] : '';
@@ -48,6 +51,12 @@ class LUD_Debug_Tools {
         <div class="wrap">
             <h1>🧪 Suite de Pruebas "Caja de Cristal"</h1>
             <p>Este módulo ejecuta simulaciones y muestra las matemáticas internas para validación manual.</p>
+
+            <?php if ( $mensaje_flash ): ?>
+                <div class="notice notice-<?php echo $tipo_flash === 'success' ? 'success' : 'error'; ?>">
+                    <p><?php echo esc_html( $mensaje_flash ); ?></p>
+                </div>
+            <?php endif; ?>
             
             <div style="background:#fff; padding:20px; border:1px solid #ccd0d4; border-radius:5px; margin-bottom:20px;">
                 <h3>🎯 LUD Test: Datos de Prueba (Seeding)</h3>
@@ -75,6 +84,21 @@ class LUD_Debug_Tools {
                     <?php wp_nonce_field('run_tests_nonce', 'security'); ?>
                     <button type="submit" class="button button-primary button-hero">⚡ EJECUTAR Y MOSTRAR CÁLCULOS</button>
                 </form>
+            </div>
+
+            <div style="background:#fff; padding:20px; border:1px solid #ccd0d4; border-radius:5px; margin-bottom:20px;">
+                <h3>📄 Vista previa de contrato y pagaré</h3>
+                <p>Envía a tu correo un contrato de mutuo y el pagaré con carta de instrucciones generados con datos ficticios para revisar redacción y aspecto (usa TCPDF y adjunta ambos PDFs).</p>
+                <form method="POST" action="<?php echo admin_url('admin-post.php'); ?>" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                    <input type="hidden" name="action" value="lud_enviar_prev_documentos">
+                    <?php wp_nonce_field('lud_prev_docs', 'security'); ?>
+                    <div>
+                        <label for="correo_prev" style="font-weight:600;">Correo de destino</label><br>
+                        <input type="email" id="correo_prev" name="correo_destino" required class="regular-text" placeholder="ejemplo@correo.com">
+                    </div>
+                    <button type="submit" class="button button-primary">Enviar vista previa</button>
+                </form>
+                <p style="color:#666; margin-top:8px;">No afecta datos reales ni crea desembolsos. Si TCPDF no está disponible, se mostrará un aviso de error.</p>
             </div>
 
             <?php if ( !empty( $resumen ) ): ?>
@@ -426,6 +450,198 @@ class LUD_Debug_Tools {
             wp_redirect( admin_url('admin.php?page=lud-debug&seed=clean') );
             exit;
         }
+    }
+
+    /**
+     * Envía contrato y pagaré de prueba a un correo indicado desde LUD Test.
+     */
+    public function enviar_vista_previa_documentos() {
+        if ( ! current_user_can( 'update_core' ) ) wp_die( 'Acceso denegado' );
+        check_admin_referer( 'lud_prev_docs', 'security' );
+
+        $destino = sanitize_email( $_POST['correo_destino'] );
+        if ( ! is_email( $destino ) ) {
+            $this->redirigir_debug( 'Correo inválido', 'error' );
+        }
+
+        // Validar disponibilidad de TCPDF antes de continuar
+        $rutas = array(
+            WP_CONTENT_DIR . '/librerias_compartidas/tcpdf/tcpdf.php',
+            WP_CONTENT_DIR . '/librerias_compartidas/TCPDF/tcpdf.php'
+        );
+        $tcpdf_disponible = false;
+        foreach ( $rutas as $ruta ) {
+            if ( file_exists( $ruta ) ) {
+                $tcpdf_disponible = true;
+                break;
+            }
+        }
+        if ( ! $tcpdf_disponible ) {
+            $this->redirigir_debug( 'TCPDF no está instalado en wp-content/librerias_compartidas/. No se pudo generar la vista previa.', 'error' );
+        }
+
+        $usuarios_demo = $this->obtener_usuarios_demo_documentos();
+        $credito_id = $this->crear_credito_demo( $usuarios_demo );
+
+        global $wpdb;
+        $credito_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE id = %d", $credito_id ) );
+        $documentos = LUD_Module_Creditos::generar_pdf_final_static( $credito_row );
+
+        if ( ! is_array( $documentos ) || empty( $documentos['contrato'] ) || empty( $documentos['pagare'] ) ) {
+            $this->limpiar_credito_demo( $credito_id, $documentos );
+            $this->redirigir_debug( 'No se pudieron generar los PDFs de vista previa. Revisa TCPDF y permisos de escritura.', 'error' );
+        }
+
+        $upload_dir = wp_upload_dir();
+        $adjuntos = array(
+            $upload_dir['basedir'] . '/fondo_seguro/contratos/' . $documentos['contrato'],
+            $upload_dir['basedir'] . '/fondo_seguro/contratos/' . $documentos['pagare']
+        );
+
+        $contenido = '<p>Adjuntamos el contrato de mutuo y el pagaré con carta de instrucciones en modo vista previa. '
+                   . 'Usan datos ficticios y no representan un desembolso real.</p>'
+                   . '<p>Revisa redacción, cálculo de valores y aspecto visual.</p>';
+
+        lud_notificaciones()->enviar_correo(
+            $destino,
+            'Fondo La Unión · Vista previa de contrato y pagaré',
+            lud_notificaciones()->armar_html( get_current_user_id(), 'Vista previa de documentos', $contenido ),
+            $adjuntos
+        );
+
+        $this->limpiar_credito_demo( $credito_id, $documentos );
+        $this->redirigir_debug( 'Vista previa enviada con éxito. Revisa tu correo.', 'success' );
+    }
+
+    /**
+     * Crea o reutiliza usuarios demo para contrato de prueba y asegura ficha en fondo_cuentas.
+     */
+    private function obtener_usuarios_demo_documentos() {
+        $usuarios = array();
+        $roles_demo = array(
+            'deudor' => 'lud_preview_deudor',
+            'fiador' => 'lud_preview_fiador'
+        );
+
+        foreach ( $roles_demo as $tipo => $login ) {
+            $usuario = get_user_by( 'login', $login );
+            if ( ! $usuario ) {
+                $usuario_id = wp_insert_user( array(
+                    'user_login' => $login,
+                    'user_pass'  => wp_generate_password( 12, false ),
+                    'user_email' => $login . '@prototipo.com.co',
+                    'display_name' => 'Vista Previa ' . ucfirst( $tipo ),
+                    'role' => 'lud_socio'
+                ) );
+                $usuario = get_user_by( 'id', $usuario_id );
+            }
+
+            if ( $usuario ) {
+                update_user_meta( $usuario->ID, 'lud_preview_docs', 1 );
+                $this->asegurar_cuenta_demo( $usuario->ID, $tipo );
+                $usuarios[ $tipo ] = $usuario;
+            }
+        }
+
+        return $usuarios;
+    }
+
+    /**
+     * Inserta o actualiza la ficha de cuenta demo con datos mínimos.
+     */
+    private function asegurar_cuenta_demo( $user_id, $tipo ) {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'fondo_cuentas';
+        $existe = $wpdb->get_row( $wpdb->prepare( "SELECT id FROM $tabla WHERE user_id = %d", $user_id ) );
+        $documento = $tipo === 'deudor' ? '1001001001' : '2002002002';
+
+        $datos = array(
+            'numero_acciones' => 2,
+            'saldo_ahorro_capital' => 300000,
+            'saldo_rendimientos' => 50000,
+            'fecha_ultimo_aporte' => date('Y-m-05'),
+            'estado_socio' => 'activo',
+            'beneficiario_nombre' => 'Beneficiario Demo',
+            'beneficiario_parentesco' => 'Familiar',
+            'beneficiario_telefono' => '3001234567',
+            'tipo_documento' => 'CC',
+            'numero_documento' => $documento,
+            'direccion_residencia' => 'Villa del Rosario',
+            'ciudad_pais' => 'Villa del Rosario, Norte de Santander',
+            'telefono_contacto' => '3001234567',
+            'email_contacto' => get_userdata( $user_id )->user_email,
+            'permite_galeria' => 1
+        );
+
+        if ( $existe ) {
+            $wpdb->update( $tabla, $datos, array( 'user_id' => $user_id ) );
+        } else {
+            $datos['user_id'] = $user_id;
+            $wpdb->insert( $tabla, $datos );
+        }
+    }
+
+    /**
+     * Crea un crédito ficticio para generar los documentos de vista previa.
+     */
+    private function crear_credito_demo( $usuarios_demo ) {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'fondo_creditos';
+
+        $monto = 1500000;
+        $plazo = 12;
+        $tasa = 1.5;
+        $cuota_estimada = round( ($monto / $plazo) + ($monto * ( $tasa / 100 )), 2 );
+
+        $wpdb->insert( $tabla, array(
+            'user_id' => $usuarios_demo['deudor']->ID,
+            'tipo_credito' => 'corriente',
+            'monto_solicitado' => $monto,
+            'monto_aprobado' => $monto,
+            'codigo_seguimiento' => 'PREVIEW-' . strtoupper( wp_generate_password( 5, false, false ) ),
+            'plazo_meses' => $plazo,
+            'tasa_interes' => $tasa,
+            'cuota_estimada' => $cuota_estimada,
+            'deudor_solidario_id' => $usuarios_demo['fiador']->ID,
+            'firma_solicitante' => null,
+            'firma_deudor' => null,
+            'ip_registro' => '127.0.0.1',
+            'user_agent' => 'LUD Preview Generator',
+            'fecha_aprobacion_deudor' => current_time('mysql'),
+            'datos_entrega' => 'Prueba de vista previa (sin desembolso real)',
+            'saldo_actual' => $monto,
+            'estado' => 'activo',
+            'fecha_solicitud' => current_time('mysql'),
+            'fecha_aprobacion' => current_time('mysql')
+        ) );
+
+        return $wpdb->insert_id;
+    }
+
+    /**
+     * Limpia el crédito y elimina archivos generados en la vista previa.
+     */
+    private function limpiar_credito_demo( $credito_id, $documentos = array() ) {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'fondo_creditos';
+        $wpdb->delete( $tabla, array( 'id' => $credito_id ) );
+
+        $upload_dir = wp_upload_dir();
+        $base = trailingslashit( $upload_dir['basedir'] ) . 'fondo_seguro/contratos/';
+        foreach ( (array) $documentos as $doc ) {
+            $ruta = $base . $doc;
+            if ( $doc && file_exists( $ruta ) ) {
+                @unlink( $ruta );
+            }
+        }
+    }
+
+    /**
+     * Redirige al panel de debug con mensaje flash.
+     */
+    private function redirigir_debug( $mensaje, $tipo = 'info' ) {
+        wp_redirect( admin_url( 'admin.php?page=lud-debug&lud_notice=' . rawurlencode( $mensaje ) . '&lud_notice_tipo=' . rawurlencode( $tipo ) ) );
+        exit;
     }
 
     // --- TEST 1: INGRESO DE DINERO BASE ---

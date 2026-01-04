@@ -396,14 +396,11 @@ class LUD_Frontend_Shortcodes {
      * Construye el HTML de una tarjeta de movimiento con lógica de enlaces seguros y detalles.
      */
     private function construir_tarjeta_movimiento( $movimiento ) {
-        $tiene_comprobante = ! empty( $movimiento->comprobante_url );
-        $link_seguro = $tiene_comprobante
-            ? admin_url( 'admin-post.php?action=lud_ver_comprobante&file=' . rawurlencode( $movimiento->comprobante_url ) )
-            : '';
+        $documentos = $this->dividir_comprobantes( $movimiento->comprobante_url );
+        $tiene_comprobante = ! empty( $documentos );
 
         $detalle_bruto = isset( $movimiento->detalle ) ? (string) $movimiento->detalle : '';
         $concepto = $this->obtener_concepto_legible( $movimiento );
-        $texto_comprobante = ( $movimiento->tipo === 'desembolso_credito' ) ? 'Ver contrato' : 'Ver comprobante';
         $es_actualizacion = $this->movimiento_es_actualizacion( $movimiento, $detalle_bruto );
 
         $texto_monto = '$ ' . number_format( $movimiento->monto );
@@ -426,7 +423,13 @@ class LUD_Frontend_Shortcodes {
                 </div>
                 <div style="font-size:0.9rem; color:#555; margin-top:4px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
                     <?php if ( $tiene_comprobante ): ?>
-                        <a href="<?php echo esc_url( $link_seguro ); ?>" target="_blank" rel="noopener" style="color:#1565c0; text-decoration:underline; font-size:0.9rem;"><?php echo esc_html( $texto_comprobante ); ?></a>
+                        <?php foreach ( $documentos as $doc_ruta ): ?>
+                            <?php 
+                                $url_segura = admin_url( 'admin-post.php?action=lud_ver_comprobante&file=' . rawurlencode( $doc_ruta ) );
+                                $etiqueta_doc = $this->etiqueta_comprobante( $doc_ruta, $movimiento->tipo );
+                            ?>
+                            <a href="<?php echo esc_url( $url_segura ); ?>" target="_blank" rel="noopener" style="color:#1565c0; text-decoration:underline; font-size:0.9rem;"><?php echo esc_html( $etiqueta_doc ); ?></a>
+                        <?php endforeach; ?>
                     <?php else: ?>
                         <span style="color:#999;">Sin comprobante adjunto</span>
                     <?php endif; ?>
@@ -458,6 +461,37 @@ class LUD_Frontend_Shortcodes {
 
         $detalle_legible = $this->formatear_detalle_generico( $detalle_bruto );
         return '<div class="lud-detalle-linea">' . esc_html( $detalle_legible ) . '</div>';
+    }
+
+    /**
+     * Divide múltiples comprobantes guardados con separador "|".
+     */
+    private function dividir_comprobantes( $comprobante_url ) {
+        $partes = array_filter( array_map( 'trim', explode( '|', (string) $comprobante_url ) ) );
+        $rutas = array();
+
+        foreach ( $partes as $parte ) {
+            $segmentos = array_filter( array_map( 'sanitize_file_name', explode( '/', $parte ) ) );
+            if ( empty( $segmentos ) ) {
+                continue;
+            }
+            $rutas[] = implode( '/', $segmentos );
+        }
+
+        return $rutas;
+    }
+
+    /**
+     * Devuelve una etiqueta legible para enlaces de comprobantes.
+     */
+    private function etiqueta_comprobante( $ruta, $tipo_movimiento ) {
+        if ( stripos( $ruta, 'pagare' ) !== false ) {
+            return 'Ver pagaré';
+        }
+        if ( stripos( $ruta, 'contrato' ) !== false || $tipo_movimiento === 'desembolso_credito' ) {
+            return 'Ver contrato';
+        }
+        return 'Ver comprobante';
     }
 
     /**
