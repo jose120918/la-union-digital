@@ -96,6 +96,8 @@ class LUD_DB_Installer {
             user_agent TEXT NULL,
             fecha_aprobacion_deudor DATETIME NULL,
             datos_entrega TEXT NULL,
+            contrato_pdf VARCHAR(255) NULL,
+            pagare_pdf VARCHAR(255) NULL,
             saldo_actual DECIMAL(15,2) DEFAULT 0,
             estado ENUM('pendiente_deudor', 'pendiente_tesoreria', 'fila_liquidez', 'activo', 'rechazado', 'pagado', 'mora') DEFAULT 'pendiente_deudor',
             fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
