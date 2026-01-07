@@ -655,10 +655,21 @@ class LUD_Module_Importaciones {
         $tabla = $this->extraer_tabla_amortizacion( $filas );
         $credito_pagado = $this->extraer_credito_pagado( $filas );
 
-        if ( empty( $meta['monto'] ) || empty( $meta['cuotas'] ) ) {
+        if ( empty( $meta['monto'] ) || empty( $meta['fecha_inicio'] ) ) {
             return array(
                 'resumen' => 'No se encontraron datos mínimos del crédito.',
                 'errores' => array( 'Verifica que el archivo tenga el bloque de meta datos.' ),
+            );
+        }
+
+        if ( empty( $meta['cuotas'] ) && ! empty( $meta['fecha_inicio'] ) && ! empty( $meta['fecha_final'] ) ) {
+            $meta['cuotas'] = $this->calcular_plazo_meses( $meta['fecha_inicio'], $meta['fecha_final'], $tipo_credito );
+        }
+
+        if ( empty( $meta['cuotas'] ) ) {
+            return array(
+                'resumen' => 'No se pudo determinar el número de cuotas del crédito.',
+                'errores' => array( 'Completa el número de cuotas o las fechas de inicio y final.' ),
             );
         }
 
@@ -691,19 +702,24 @@ class LUD_Module_Importaciones {
         $credito_id = $wpdb->insert_id;
         $cuotas_insertadas = 0;
 
-        foreach ( $tabla['cuotas'] as $cuota ) {
-            $wpdb->insert( "{$wpdb->prefix}fondo_amortizacion", array(
-                'credito_id' => $credito_id,
-                'numero_cuota' => $cuota['numero'],
-                'fecha_vencimiento' => $cuota['fecha'],
-                'capital_programado' => $cuota['capital'],
-                'interes_programado' => $cuota['interes'],
-                'valor_cuota_total' => $cuota['total'],
-                'fecha_pago' => $cuota['pagado'] > 0 ? $cuota['fecha'] : null,
-                'monto_pagado' => $cuota['pagado'],
-                'estado' => $cuota['pagado'] > 0 ? 'pagado' : 'pendiente',
-            ) );
-            $cuotas_insertadas++;
+        if ( empty( $tabla['cuotas'] ) ) {
+            $this->generar_amortizacion_aleman( $credito_id, $meta['monto'], $meta['tasa'], $meta['cuotas'], $meta['fecha_inicio'], $tipo_credito, $credito_pagado );
+            $cuotas_insertadas = $meta['cuotas'];
+        } else {
+            foreach ( $tabla['cuotas'] as $cuota ) {
+                $wpdb->insert( "{$wpdb->prefix}fondo_amortizacion", array(
+                    'credito_id' => $credito_id,
+                    'numero_cuota' => $cuota['numero'],
+                    'fecha_vencimiento' => $cuota['fecha'],
+                    'capital_programado' => $cuota['capital'],
+                    'interes_programado' => $cuota['interes'],
+                    'valor_cuota_total' => $cuota['total'],
+                    'fecha_pago' => $cuota['pagado'] > 0 ? $cuota['fecha'] : null,
+                    'monto_pagado' => $cuota['pagado'],
+                    'estado' => $cuota['pagado'] > 0 ? 'pagado' : 'pendiente',
+                ) );
+                $cuotas_insertadas++;
+            }
         }
 
         return array(

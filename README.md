@@ -100,6 +100,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Desembolsos y cierres:**
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
+  - La amortización se calcula desde la fecha real de desembolso y aplica la regla de primera cuota (día 5 del mes siguiente al subsiguiente).
   - Liquidación anual de utilidades (`admin_post_lud_liquidacion_anual`).
 - **Retiros voluntarios:**
   - Card de “📤 Solicitudes de Retiro” en el dashboard que lista retiros `pendiente`.
@@ -197,6 +198,7 @@ El módulo `LUD_Module_Importaciones` vive en Tesorería y está diseñado para 
    - Columnas opcionales: `tasa_interes`, `estado_credito`, `saldo_actual`, `monto_pagado`.
    - `monto_pagado` representa **capital pagado** (no incluye intereses ni multas).
    - Se genera la tabla de amortización bajo **sistema Alemán** (capital constante + interés sobre saldo).
+   - Si el archivo no trae número de cuotas, se calcula con `fecha_inicio` y `fecha_fin`.
    - Las cuotas se marcan como pagadas según el capital pagado acumulado al importar.
    - Si `fecha_inicio` es futura, el crédito se guarda como `programado` y se activa automáticamente en la fecha indicada.
 4. **Créditos vigentes (`*.xlsx`)**

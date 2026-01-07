@@ -1183,6 +1183,70 @@ class LUD_Admin_Tesoreria {
     }
 
     /**
+     * Muestra resumen anual de recaudos por concepto.
+     */
+    private function render_historial_anual() {
+        global $wpdb;
+
+        $resumen = $wpdb->get_results("
+            SELECT
+                YEAR(fecha_recaudo) AS anio,
+                SUM(CASE WHEN concepto = 'ahorro' THEN monto ELSE 0 END) AS total_ahorro,
+                SUM(CASE WHEN concepto = 'capital_credito' THEN monto ELSE 0 END) AS total_capital,
+                SUM(CASE WHEN concepto = 'interes_credito' THEN monto ELSE 0 END) AS total_interes,
+                SUM(CASE WHEN concepto = 'multa' THEN monto ELSE 0 END) AS total_multa,
+                SUM(CASE WHEN concepto = 'cuota_secretaria' THEN monto ELSE 0 END) AS total_secretaria,
+                SUM(CASE WHEN concepto = 'excedente' THEN monto ELSE 0 END) AS total_cuota_mixta
+            FROM {$wpdb->prefix}fondo_recaudos_detalle
+            GROUP BY YEAR(fecha_recaudo)
+            ORDER BY anio DESC
+        ");
+        ?>
+        <div class="lud-card">
+            <h3>🧮 Históricos Anuales del Fondo</h3>
+            <p>Este resumen consolida el recaudo por año. La liquidación de intereses se calcula año a año y no mezcla periodos anteriores en el cálculo vigente.</p>
+
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th>Año</th>
+                        <th>Ahorro</th>
+                        <th>Capital Créditos</th>
+                        <th>Intereses</th>
+                        <th>Multas</th>
+                        <th>Secretaría</th>
+                        <th>Cuota Mixta</th>
+                        <th>Total Recaudo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if ( empty( $resumen ) ) : ?>
+                    <tr><td colspan="8">Aún no hay recaudos históricos registrados.</td></tr>
+                <?php else : ?>
+                    <?php foreach ( $resumen as $fila ) : ?>
+                        <?php
+                        $total = floatval( $fila->total_ahorro ) + floatval( $fila->total_capital ) + floatval( $fila->total_interes )
+                               + floatval( $fila->total_multa ) + floatval( $fila->total_secretaria ) + floatval( $fila->total_cuota_mixta );
+                        ?>
+                        <tr>
+                            <td><strong><?php echo esc_html( $fila->anio ); ?></strong></td>
+                            <td>$ <?php echo number_format( $fila->total_ahorro ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_capital ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_interes ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_multa ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_secretaria ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_cuota_mixta ); ?></td>
+                            <td><strong>$ <?php echo number_format( $total ); ?></strong></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    /**
      * Vista para marcar asistencia a asambleas y generar multas por inasistencia.
      */
     private function render_control_asistencia() {
@@ -1756,7 +1820,24 @@ class LUD_Admin_Tesoreria {
     }
 
     /**
-     * Genera la tabla de amortización para un crédito corriente.
+     * Calcula la fecha de la primera cuota según estatutos (día 5 del mes correspondiente).
+     */
+    private function calcular_fecha_primera_cuota( $fecha_inicio, $tipo_credito ) {
+        try {
+            $fecha = new DateTime( $fecha_inicio );
+        } catch ( Exception $e ) {
+            return current_time( 'Y-m-d' );
+        }
+
+        $meses = $tipo_credito === 'agil' ? 1 : 2;
+        $fecha->modify( "+{$meses} months" );
+        $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
+
+        return $fecha->format( 'Y-m-d' );
+    }
+
+    /**
+     * Genera la tabla de amortización para un crédito (corriente o ágil).
      */
     private function generar_tabla_amortizacion($credito_id) {
         global $wpdb;
@@ -1771,15 +1852,19 @@ class LUD_Admin_Tesoreria {
         $diferencia = $monto - $suma_capitales;
         $saldo = $monto;
 
-        $fecha_base = new DateTime( current_time('mysql') );
-        $fecha_base->modify('+2 months'); 
-        $fecha_base->setDate($fecha_base->format('Y'), $fecha_base->format('m'), 5);
+        $fecha_inicio = $credito->fecha_aprobacion ?: $credito->fecha_solicitud;
+        if ( ! $fecha_inicio ) {
+            $fecha_inicio = current_time( 'mysql' );
+        }
+        $fecha_base = $this->calcular_fecha_primera_cuota( $fecha_inicio, $credito->tipo_credito );
 
         for ($i = 1; $i <= $plazo; $i++) {
-            $fecha_vencimiento = clone $fecha_base;
+            $fecha_vencimiento = $fecha_base;
             if ($i > 1) {
-                $fecha_vencimiento->modify("+" . ($i - 1) . " months");
-                $fecha_vencimiento->setDate($fecha_vencimiento->format('Y'), $fecha_vencimiento->format('m'), 5);
+                $fecha = new DateTime( $fecha_base );
+                $fecha->modify("+" . ($i - 1) . " months");
+                $fecha->setDate($fecha->format('Y'), $fecha->format('m'), 5);
+                $fecha_vencimiento = $fecha->format( 'Y-m-d' );
             }
             $capital_cuota = $capital_mensual_base;
             if ( $i == $plazo ) $capital_cuota += $diferencia;
@@ -1788,7 +1873,7 @@ class LUD_Admin_Tesoreria {
 
             $wpdb->insert( $tabla_amort, [
                 'credito_id' => $credito_id, 'numero_cuota' => $i,
-                'fecha_vencimiento' => $fecha_vencimiento->format('Y-m-d'),
+                'fecha_vencimiento' => $fecha_vencimiento,
                 'capital_programado' => $capital_cuota,
                 'interes_programado' => $interes_mensual,
                 'valor_cuota_total' => $valor_cuota_total,
