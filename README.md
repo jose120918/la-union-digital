@@ -122,6 +122,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado). Los pagos sembrados se registran en el día 5 de cada mes y sincronizan `fecha_ultimo_aporte` con el último pago generado para evitar incoherencias de mora. “Limpiar Datos de Prueba” elimina únicamente esos usuarios y sus tablas relacionadas.
 - **Vista previa legal:** en “🧪 LUD Tests” puedes enviar a un correo indicado un contrato de mutuo y su pagaré con carta de instrucciones generados con TCPDF y datos ficticios (no crea desembolsos reales).
 - **Dashboard Tesorería:** lista de morosos ordenada A-Z, Caja Secretaría con recaudo del mes e histórico de entregas, y ficha de socio con fecha de incorporación y estado detallado de mora/al día.
+  - La hoja de vida de socio muestra score crediticio, resumen de créditos activos y tabla de amortización desplegable.
 
 ## Reglas y límites vigentes
 - Máximo 10 acciones por socio: la UI y el backend bloquean cantidades superiores al programar cambios desde Tesorería.

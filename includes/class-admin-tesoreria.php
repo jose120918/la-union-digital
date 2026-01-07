@@ -744,11 +744,26 @@ class LUD_Admin_Tesoreria {
         $tx_module = new LUD_Module_Transacciones();
         $deuda_info = $tx_module->calcular_deuda_usuario($user_id);
         $estado_general = ($deuda_info['total_admin'] + $deuda_info['creditos'] > 0) ? 'En Mora' : 'Al Día';
+        $score_crediticio = LUD_Module_Creditos::calcular_score_socio( $user_id );
+        $tooltip_score = 'El score suma cuotas pagadas a tiempo, resta puntos por cuotas en mora/parcial y evalúa créditos terminados. Se normaliza de 0 a 100.';
 
         // Verificar si hay cambio programado
         $cambio_pendiente = get_user_meta($user_id, 'lud_acciones_programadas', true);
         $beneficiarios_extra = get_user_meta($user_id, 'lud_beneficiarios_detalle', true);
         $beneficiarios_extra = $beneficiarios_extra ? json_decode( $beneficiarios_extra, true ) : array();
+
+        add_filter( 'admin_footer_text', '__return_empty_string' );
+        add_filter( 'update_footer', '__return_empty_string', 999 );
+
+        $creditos_activos = array();
+        $creditos_pagados = array();
+        foreach ( $creditos as $credito_item ) {
+            if ( in_array( $credito_item->estado, array( 'activo', 'mora', 'programado' ), true ) ) {
+                $creditos_activos[] = $credito_item;
+            } elseif ( $credito_item->estado === 'pagado' ) {
+                $creditos_pagados[] = $credito_item;
+            }
+        }
         ?>
         
         <p><a href="?page=lud-tesoreria&view=buscar_socio" class="button">← Volver al Directorio</a></p>
@@ -816,6 +831,43 @@ class LUD_Admin_Tesoreria {
                         </strong>
                         <?php if($deuda_info['multa'] > 0) echo "<br><small style='color:#e74c3c'>(Incluye mora: $ ".number_format($deuda_info['multa']).")</small>"; ?>
                     </div>
+                    <div style="background:#fff; padding:10px; border-radius:5px; grid-column: span 2;">
+                        <small style="display:flex; gap:6px; align-items:center;">
+                            Score Crediticio
+                            <span title="<?php echo esc_attr( $tooltip_score ); ?>" style="font-size:0.85rem; color:#0d47a1; cursor:help;">ℹ️</span>
+                        </small>
+                        <strong style="font-size:1.4em; color:#2e7d32;"><?php echo number_format( $score_crediticio ); ?>/100</strong>
+                    </div>
+                    <?php if ( ! empty( $creditos_activos ) ): ?>
+                        <?php foreach ( $creditos_activos as $credito_activo ): ?>
+                            <?php
+                            $amort_activo = $wpdb->get_results( $wpdb->prepare(
+                                "SELECT * FROM {$wpdb->prefix}fondo_amortizacion WHERE credito_id = %d ORDER BY numero_cuota ASC",
+                                $credito_activo->id
+                            ) );
+                            $interes_total = 0;
+                            $fecha_final = '';
+                            $proxima_cuota = null;
+                            foreach ( $amort_activo as $fila ) {
+                                $interes_total += floatval( $fila->interes_programado );
+                                $fecha_final = $fila->fecha_vencimiento;
+                                if ( ! $proxima_cuota && $fila->estado === 'pendiente' ) {
+                                    $proxima_cuota = $fila;
+                                }
+                            }
+                            ?>
+                            <div style="background:#fff; padding:10px; border-radius:5px; grid-column: span 2;">
+                                <small>Crédito <?php echo esc_html( ucfirst( $credito_activo->tipo_credito ) ); ?> (<?php echo esc_html( strtoupper( $credito_activo->estado ) ); ?>)</small>
+                                <div style="font-size:0.9rem; color:#555; margin-top:6px;">
+                                    Saldo restante: <strong>$ <?php echo number_format( $credito_activo->saldo_actual ); ?></strong><br>
+                                    Interés total a pagar: <strong>$ <?php echo number_format( $interes_total ); ?></strong><br>
+                                    Cuotas pactadas: <strong><?php echo intval( $credito_activo->plazo_meses ); ?></strong><br>
+                                    Fecha final esperada: <strong><?php echo $fecha_final ? date_i18n( 'd M Y', strtotime( $fecha_final ) ) : 'N/D'; ?></strong><br>
+                                    Próxima cuota: <strong><?php echo $proxima_cuota ? date_i18n( 'd M Y', strtotime( $proxima_cuota->fecha_vencimiento ) ) : 'N/D'; ?></strong>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -879,17 +931,111 @@ class LUD_Admin_Tesoreria {
             <?php if(empty($creditos)): ?>
                 <p>No ha solicitado créditos.</p>
             <?php else: ?>
-                <table class="widefat striped">
-                    <thead><tr><th>Fecha</th><th>Monto</th><th>Estado</th><th>Saldo Restante</th></tr></thead>
-                    <?php foreach($creditos as $c): ?>
-                    <tr>
-                        <td><?php echo date('d/M/Y', strtotime($c->fecha_solicitud)); ?></td>
-                        <td>$ <?php echo number_format($c->monto_solicitado); ?></td>
-                        <td><?php echo strtoupper($c->estado); ?></td>
-                        <td>$ <?php echo number_format($c->saldo_actual); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </table>
+                <div style="margin-bottom:15px;">
+                    <h4>Créditos activos y programados</h4>
+                    <?php if ( empty( $creditos_activos ) ): ?>
+                        <p>Sin créditos activos.</p>
+                    <?php else: ?>
+                        <?php foreach ( $creditos_activos as $c ): ?>
+                            <?php
+                            $amort = $wpdb->get_results( $wpdb->prepare(
+                                "SELECT * FROM {$wpdb->prefix}fondo_amortizacion WHERE credito_id = %d ORDER BY numero_cuota ASC",
+                                $c->id
+                            ) );
+                            $proxima_cuota = null;
+                            $fecha_final = '';
+                            foreach ( $amort as $fila ) {
+                                $fecha_final = $fila->fecha_vencimiento;
+                                if ( ! $proxima_cuota && $fila->estado === 'pendiente' ) {
+                                    $proxima_cuota = $fila;
+                                }
+                            }
+                            $toggle_id = 'amort_credito_' . $c->id;
+                            ?>
+                            <div style="background:#f7f9fb; padding:12px; border-radius:8px; margin-bottom:10px;">
+                                <strong><?php echo esc_html( ucfirst( $c->tipo_credito ) ); ?></strong>
+                                - Estado: <strong><?php echo esc_html( strtoupper( $c->estado ) ); ?></strong><br>
+                                Inicio: <strong><?php echo $c->fecha_solicitud ? date_i18n( 'd M Y', strtotime( $c->fecha_solicitud ) ) : 'N/D'; ?></strong><br>
+                                Cuotas pactadas: <strong><?php echo intval( $c->plazo_meses ); ?></strong><br>
+                                Próxima cuota: <strong><?php echo $proxima_cuota ? date_i18n( 'd M Y', strtotime( $proxima_cuota->fecha_vencimiento ) ) : 'N/D'; ?></strong><br>
+                                Valor próxima cuota: <strong><?php echo $proxima_cuota ? '$ ' . number_format( $proxima_cuota->valor_cuota_total ) : 'N/D'; ?></strong><br>
+                                Fecha final: <strong><?php echo $fecha_final ? date_i18n( 'd M Y', strtotime( $fecha_final ) ) : 'N/D'; ?></strong><br>
+                                Saldo restante: <strong>$ <?php echo number_format( $c->saldo_actual ); ?></strong><br>
+
+                                <button class="button button-secondary" type="button" onclick="document.getElementById('<?php echo esc_attr( $toggle_id ); ?>').classList.toggle('lud-oculto');">
+                                    Ver tabla de amortización
+                                </button>
+                                <div id="<?php echo esc_attr( $toggle_id ); ?>" class="lud-oculto" style="margin-top:10px;">
+                                    <?php if ( empty( $amort ) ): ?>
+                                        <p>Sin tabla de amortización registrada.</p>
+                                    <?php else: ?>
+                                        <table class="widefat striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>Vence</th>
+                                                    <th>Capital</th>
+                                                    <th>Interés</th>
+                                                    <th>Total</th>
+                                                    <th>Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ( $amort as $fila ): ?>
+                                                    <tr>
+                                                        <td><?php echo intval( $fila->numero_cuota ); ?></td>
+                                                        <td><?php echo date_i18n( 'd M Y', strtotime( $fila->fecha_vencimiento ) ); ?></td>
+                                                        <td>$ <?php echo number_format( $fila->capital_programado ); ?></td>
+                                                        <td>$ <?php echo number_format( $fila->interes_programado ); ?></td>
+                                                        <td>$ <?php echo number_format( $fila->valor_cuota_total ); ?></td>
+                                                        <td><?php echo esc_html( ucfirst( $fila->estado ) ); ?></td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+
+                <div>
+                    <h4>Créditos pagados</h4>
+                    <?php if ( empty( $creditos_pagados ) ): ?>
+                        <p>No hay créditos pagados.</p>
+                    <?php else: ?>
+                        <table class="widefat striped">
+                            <thead><tr><th>Inicio</th><th>Monto</th><th>Capital pagado</th><th>Cuotas</th><th>Fin</th><th>Interés pagado</th></tr></thead>
+                            <?php foreach ( $creditos_pagados as $c ): ?>
+                                <?php
+                                $amort_pagado = $wpdb->get_results( $wpdb->prepare(
+                                    "SELECT * FROM {$wpdb->prefix}fondo_amortizacion WHERE credito_id = %d ORDER BY numero_cuota ASC",
+                                    $c->id
+                                ) );
+                                $capital_pagado = 0;
+                                $interes_pagado = 0;
+                                $fecha_final = '';
+                                foreach ( $amort_pagado as $fila ) {
+                                    $fecha_final = $fila->fecha_vencimiento;
+                                    if ( $fila->estado === 'pagado' ) {
+                                        $capital_pagado += floatval( $fila->capital_programado );
+                                        $interes_pagado += floatval( $fila->interes_programado );
+                                    }
+                                }
+                                ?>
+                                <tr>
+                                    <td><?php echo $c->fecha_solicitud ? date_i18n( 'd M Y', strtotime( $c->fecha_solicitud ) ) : 'N/D'; ?></td>
+                                    <td>$ <?php echo number_format( $c->monto_solicitado ); ?></td>
+                                    <td>$ <?php echo number_format( $capital_pagado ); ?></td>
+                                    <td><?php echo intval( $c->plazo_meses ); ?></td>
+                                    <td><?php echo $fecha_final ? date_i18n( 'd M Y', strtotime( $fecha_final ) ) : 'N/D'; ?></td>
+                                    <td>$ <?php echo number_format( $interes_pagado ); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </table>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
         </div>
 
