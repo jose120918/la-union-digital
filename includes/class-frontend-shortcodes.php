@@ -615,6 +615,9 @@ class LUD_Frontend_Shortcodes {
             $msg = '<div class="lud-alert success">✅ Beneficiario actualizado correctamente.</div>';
         }
 
+        $beneficiarios_extra = get_user_meta( $user_id, 'lud_beneficiarios_detalle', true );
+        $beneficiarios_extra = $beneficiarios_extra ? json_decode( $beneficiarios_extra, true ) : array();
+
         ob_start();
         ?>
         <div class="lud-card">
@@ -658,6 +661,28 @@ class LUD_Frontend_Shortcodes {
 
                 <button type="submit" class="lud-btn" style="background-color:#546e7a;">Guardar Información</button>
             </form>
+
+            <div style="margin-top:20px;">
+                <h4>🧾 Beneficiarios registrados</h4>
+                <?php if ( ! empty( $beneficiarios_extra ) ) : ?>
+                    <ul style="margin-left:18px;">
+                        <?php foreach ( $beneficiarios_extra as $benef ) : ?>
+                            <li>
+                                <strong><?php echo esc_html( $benef['nombre'] ?? '' ); ?></strong>
+                                <?php if ( ! empty( $benef['parentesco'] ) ) : ?>
+                                    (<?php echo esc_html( $benef['parentesco'] ); ?>)
+                                <?php endif; ?>
+                                <?php if ( ! empty( $benef['porcentaje'] ) ) : ?>
+                                    - <?php echo esc_html( $benef['porcentaje'] ); ?>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <p style="font-size:0.85rem; color:#666;">Estos beneficiarios provienen del histórico importado y se usan como referencia en caso de fallecimiento.</p>
+                <?php else : ?>
+                    <p style="font-size:0.85rem; color:#666;">Aún no hay beneficiarios adicionales registrados.</p>
+                <?php endif; ?>
+            </div>
         </div>
         <?php
         return ob_get_clean();
