@@ -647,20 +647,43 @@ class LUD_Module_Importaciones {
             'fecha_final' => '',
         );
 
+        $mapa = array(
+            'monto' => 'monto',
+            'numero de cuotas' => 'cuotas',
+            'tasa de interes' => 'tasa',
+            'valor cuota fija' => 'cuota_fija',
+            'fecha de inicio' => 'fecha_inicio',
+            'fecha final' => 'fecha_final',
+        );
+
         foreach ( $filas as $fila ) {
-            $label = strtolower( trim( $fila[0] ?? '' ) );
-            if ( $label === 'monto' ) {
-                $meta['monto'] = $this->normalizar_monto( $fila[1] ?? 0 );
-            } elseif ( $label === 'número de cuotas' || $label === 'numero de cuotas' ) {
-                $meta['cuotas'] = $this->normalizar_entero( $fila[1] ?? 0 );
-            } elseif ( $label === 'tasa de interes' ) {
-                $meta['tasa'] = $this->normalizar_monto( $fila[1] ?? 0 );
-            } elseif ( $label === 'valor cuota fija' ) {
-                $meta['cuota_fija'] = $this->normalizar_monto( $fila[1] ?? 0 );
-            } elseif ( $label === 'fecha de inicio' ) {
-                $meta['fecha_inicio'] = $this->normalizar_fecha( $fila[1] ?? '' );
-            } elseif ( $label === 'fecha final' ) {
-                $meta['fecha_final'] = $this->normalizar_fecha( $fila[1] ?? '' );
+            $total = count( $fila );
+            for ( $i = 0; $i < $total; $i++ ) {
+                $label = $this->normalizar_etiqueta( $fila[ $i ] ?? '' );
+                if ( ! isset( $mapa[ $label ] ) ) {
+                    continue;
+                }
+                $valor = $fila[ $i + 1 ] ?? '';
+                switch ( $mapa[ $label ] ) {
+                    case 'monto':
+                        $meta['monto'] = $this->normalizar_monto( $valor );
+                        break;
+                    case 'cuotas':
+                        $meta['cuotas'] = $this->normalizar_entero( $valor );
+                        break;
+                    case 'tasa':
+                        $meta['tasa'] = $this->normalizar_monto( $valor );
+                        break;
+                    case 'cuota_fija':
+                        $meta['cuota_fija'] = $this->normalizar_monto( $valor );
+                        break;
+                    case 'fecha_inicio':
+                        $meta['fecha_inicio'] = $this->normalizar_fecha( $valor );
+                        break;
+                    case 'fecha_final':
+                        $meta['fecha_final'] = $this->normalizar_fecha( $valor );
+                        break;
+                }
             }
         }
 
@@ -934,6 +957,22 @@ class LUD_Module_Importaciones {
             }
         }
         return 0;
+    }
+
+    /**
+     * Normaliza etiquetas con o sin tildes.
+     */
+    private function normalizar_etiqueta( $texto ) {
+        $texto = strtolower( trim( (string) $texto ) );
+        $reemplazos = array(
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        );
+        return strtr( $texto, $reemplazos );
     }
 
     /**

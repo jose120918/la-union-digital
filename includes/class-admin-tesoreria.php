@@ -177,20 +177,35 @@ class LUD_Admin_Tesoreria {
         $puede_editar = current_user_can('lud_manage_tesoreria');
 
         // 1. CÁLCULOS DE CAJA (Dinero Físico Real)
-        // Entradas
-        $total_entradas = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle");
-        // Salidas Operativas
-        $total_gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos");
-        // Salidas por Créditos
-        $total_prestado = $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'pagado', 'mora')");
-        // Salidas por Pago de Intereses (Liquidación Diciembre)
+        // Entradas (solo año actual para no sumar históricos de años cerrados).
+        $total_entradas = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE YEAR(fecha_recaudo) = %d",
+            $anio_actual
+        ));
+        // Salidas Operativas (solo año actual).
+        $total_gastos = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE YEAR(fecha_gasto) = %d",
+            $anio_actual
+        ));
+        // Salidas por Créditos (saldo vigente real).
+        $total_prestado = $wpdb->get_var("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora')");
+        // Salidas por Pago de Intereses (Liquidación Diciembre del año actual)
         // Al liquidar, el dinero sale de la caja para entregarse al socio. Debemos restarlo.
-        $total_intereses_pagados = $wpdb->get_var("SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado'");
+        $total_intereses_pagados = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado' AND anio = %d",
+            $anio_actual
+        ));
 
         $dinero_fisico = floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado) - floatval($total_intereses_pagados);
 
-        $recaudo_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria'");
-        $gasto_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria'");
+        $recaudo_sec = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND YEAR(fecha_recaudo) = %d",
+            $anio_actual
+        ));
+        $gasto_sec = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND YEAR(fecha_gasto) = %d",
+            $anio_actual
+        ));
         $fondo_secretaria = floatval($recaudo_sec) - floatval($gasto_sec);
         
         $disponible_para_creditos = $dinero_fisico - $fondo_secretaria;
