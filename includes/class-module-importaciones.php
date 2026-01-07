@@ -1131,6 +1131,26 @@ class LUD_Module_Importaciones {
     }
 
     /**
+     * Calcula interés prorrateado por días para la primera cuota importada.
+     */
+    private function calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento ) {
+        try {
+            $inicio = new DateTime( $fecha_inicio );
+            $vencimiento = new DateTime( $fecha_vencimiento );
+        } catch ( Exception $e ) {
+            return round( $saldo * ( $tasa / 100 ), 2 );
+        }
+
+        $dias = (int) $inicio->diff( $vencimiento )->format( '%a' );
+        if ( $dias <= 0 ) {
+            return round( $saldo * ( $tasa / 100 ), 2 );
+        }
+
+        $factor_diario = ( $tasa / 100 ) / 30;
+        return round( $saldo * $factor_diario * $dias, 2 );
+    }
+
+    /**
      * Genera amortización alemana para créditos importados.
      */
     private function generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo, $capital_pagado = 0 ) {
@@ -1143,8 +1163,6 @@ class LUD_Module_Importaciones {
         $capital_pagado_acumulado = 0;
 
         for ( $i = 1; $i <= $plazo; $i++ ) {
-            $interes = $saldo * ( $tasa / 100 );
-            $cuota_total = $capital + $interes;
             $fecha_vencimiento = $fecha_base;
             if ( $i > 1 && $fecha_base ) {
                 $fecha = new DateTime( $fecha_base );
@@ -1152,6 +1170,11 @@ class LUD_Module_Importaciones {
                 $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
                 $fecha_vencimiento = $fecha->format( 'Y-m-d' );
             }
+
+            $interes = $i === 1
+                ? $this->calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento )
+                : $saldo * ( $tasa / 100 );
+            $cuota_total = $capital + $interes;
 
             $estado = 'pendiente';
             $fecha_pago = null;
