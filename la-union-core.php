@@ -2,7 +2,7 @@
 /*
 Plugin Name: Sistema La Unión Digital
 Description: Core financiero y gestión de socios para el Fondo de Inversión.
-Version: 1.4.7
+Version: 1.4.9
 Author: Jose Muñoz
 */
 

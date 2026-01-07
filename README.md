@@ -25,6 +25,10 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `includes/class-module-importaciones.php`: importaciones masivas de socios, aportes históricos y créditos desde CSV/XLSX.
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
+## Historial de versiones
+- **1.4.9:** eliminación de duplicados de `render_historial_anual` para evitar el error de redeclaración de la clase.
+- **1.4.8:** corrección de sintaxis en `LUD_Admin_Tesoreria` para permitir la activación del plugin sin errores fatales.
+
 ## Instalación y activación
 1. Copiar el directorio del plugin a `wp-content/plugins/sistema-la-union-digital/`.
 2. Activar desde el administrador de WordPress. Durante la activación se crean las tablas personalizadas y los roles con capacidades.
