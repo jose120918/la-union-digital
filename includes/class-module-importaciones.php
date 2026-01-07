@@ -14,9 +14,8 @@ class LUD_Module_Importaciones {
      */
     public function __construct() {
         add_action( 'admin_post_lud_importar_socios', array( $this, 'procesar_importacion_socios' ) );
-        add_action( 'admin_post_lud_importar_aportes_2024', array( $this, 'procesar_importacion_2024' ) );
-        add_action( 'admin_post_lud_importar_movimientos_2025', array( $this, 'procesar_importacion_2025' ) );
-        add_action( 'admin_post_lud_importar_movimientos_2026', array( $this, 'procesar_importacion_2026' ) );
+        add_action( 'admin_post_lud_importar_pagos_detallados', array( $this, 'procesar_importacion_pagos_detallados' ) );
+        add_action( 'admin_post_lud_importar_creditos_csv', array( $this, 'procesar_importacion_creditos_csv' ) );
         add_action( 'admin_post_lud_importar_credito_xlsx', array( $this, 'procesar_importacion_credito' ) );
     }
 
@@ -61,40 +60,29 @@ class LUD_Module_Importaciones {
         </div>
 
         <div class="lud-card">
-            <h3>2) Importar ahorro mensual 2024</h3>
+            <h3>2) Importar pagos históricos (CSV detallado)</h3>
             <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-                <input type="hidden" name="action" value="lud_importar_aportes_2024">
-                <?php wp_nonce_field( 'lud_importar_aportes_2024', 'lud_importar_seguridad' ); ?>
+                <input type="hidden" name="action" value="lud_importar_pagos_detallados">
+                <?php wp_nonce_field( 'lud_importar_pagos_detallados', 'lud_importar_seguridad' ); ?>
                 <input type="file" name="archivo_csv" accept=".csv" required>
-                <p class="description">Archivo esperado: “2024.csv” con separador por punto y coma.</p>
-                <button type="submit" class="button button-primary">Importar 2024</button>
+                <p class="description">Archivo esperado: “pagos_historicos.csv” con columnas por concepto (0 válido).</p>
+                <button type="submit" class="button button-primary">Importar pagos</button>
             </form>
         </div>
 
         <div class="lud-card">
-            <h3>3) Importar movimientos 2025</h3>
+            <h3>3) Importar créditos (CSV)</h3>
             <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-                <input type="hidden" name="action" value="lud_importar_movimientos_2025">
-                <?php wp_nonce_field( 'lud_importar_movimientos_2025', 'lud_importar_seguridad' ); ?>
+                <input type="hidden" name="action" value="lud_importar_creditos_csv">
+                <?php wp_nonce_field( 'lud_importar_creditos_csv', 'lud_importar_seguridad' ); ?>
                 <input type="file" name="archivo_csv" accept=".csv" required>
-                <p class="description">Archivo esperado: “2025.csv” con separador por punto y coma.</p>
-                <button type="submit" class="button button-primary">Importar 2025</button>
+                <p class="description">Archivo esperado: “creditos_historicos.csv”.</p>
+                <button type="submit" class="button button-primary">Importar créditos</button>
             </form>
         </div>
 
         <div class="lud-card">
-            <h3>4) Importar movimientos 2026 (enero)</h3>
-            <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-                <input type="hidden" name="action" value="lud_importar_movimientos_2026">
-                <?php wp_nonce_field( 'lud_importar_movimientos_2026', 'lud_importar_seguridad' ); ?>
-                <input type="file" name="archivo_csv" accept=".csv" required>
-                <p class="description">Archivo esperado: “2026.csv” con separador por punto y coma.</p>
-                <button type="submit" class="button button-primary">Importar 2026</button>
-            </form>
-        </div>
-
-        <div class="lud-card">
-            <h3>5) Importar crédito vigente (XLSX)</h3>
+            <h3>4) Importar crédito vigente (XLSX)</h3>
             <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
                 <input type="hidden" name="action" value="lud_importar_credito_xlsx">
                 <?php wp_nonce_field( 'lud_importar_credito_xlsx', 'lud_importar_seguridad' ); ?>
@@ -169,38 +157,26 @@ class LUD_Module_Importaciones {
     }
 
     /**
-     * Procesa la importación de aportes 2024.
+     * Procesa la importación de pagos detallados.
      */
-    public function procesar_importacion_2024() {
-        $this->validar_permiso( 'lud_importar_aportes_2024' );
+    public function procesar_importacion_pagos_detallados() {
+        $this->validar_permiso( 'lud_importar_pagos_detallados' );
         $archivo = $this->obtener_archivo_subido( 'archivo_csv', array( 'csv' ) );
-        $filas = $this->leer_csv( $archivo['tmp_name'], ';' );
+        $filas = $this->leer_csv_detectado( $archivo['tmp_name'] );
 
-        $resultado = $this->importar_aportes_anuales( $filas, 2024 );
+        $resultado = $this->importar_pagos_detallados( $filas );
         $this->redirigir_resultado( $resultado['resumen'], $resultado['errores'] );
     }
 
     /**
-     * Procesa la importación de movimientos 2025.
+     * Procesa la importación de créditos desde CSV.
      */
-    public function procesar_importacion_2025() {
-        $this->validar_permiso( 'lud_importar_movimientos_2025' );
+    public function procesar_importacion_creditos_csv() {
+        $this->validar_permiso( 'lud_importar_creditos_csv' );
         $archivo = $this->obtener_archivo_subido( 'archivo_csv', array( 'csv' ) );
-        $filas = $this->leer_csv( $archivo['tmp_name'], ';' );
+        $filas = $this->leer_csv_detectado( $archivo['tmp_name'] );
 
-        $resultado = $this->importar_movimientos_detallados( $filas, 2025 );
-        $this->redirigir_resultado( $resultado['resumen'], $resultado['errores'] );
-    }
-
-    /**
-     * Procesa la importación de movimientos 2026.
-     */
-    public function procesar_importacion_2026() {
-        $this->validar_permiso( 'lud_importar_movimientos_2026' );
-        $archivo = $this->obtener_archivo_subido( 'archivo_csv', array( 'csv' ) );
-        $filas = $this->leer_csv( $archivo['tmp_name'], ';' );
-
-        $resultado = $this->importar_movimientos_detallados( $filas, 2026 );
+        $resultado = $this->importar_creditos_csv( $filas );
         $this->redirigir_resultado( $resultado['resumen'], $resultado['errores'] );
     }
 
@@ -279,6 +255,30 @@ class LUD_Module_Importaciones {
      * Lee un CSV según delimitador.
      */
     private function leer_csv( $ruta, $delimitador ) {
+        $filas = array();
+        if ( ( $handle = fopen( $ruta, 'r' ) ) !== false ) {
+            while ( ( $data = fgetcsv( $handle, 0, $delimitador ) ) !== false ) {
+                $filas[] = $data;
+            }
+            fclose( $handle );
+        }
+        return $filas;
+    }
+
+    /**
+     * Lee un CSV detectando delimitador.
+     */
+    private function leer_csv_detectado( $ruta ) {
+        $contenido = file_get_contents( $ruta );
+        if ( $contenido === false ) {
+            return array();
+        }
+        $lineas = preg_split( "/\\r\\n|\\r|\\n/", $contenido );
+        $primera = $lineas[0] ?? '';
+        $coma = substr_count( $primera, ',' );
+        $punto_coma = substr_count( $primera, ';' );
+        $delimitador = $punto_coma > $coma ? ';' : ',';
+
         $filas = array();
         if ( ( $handle = fopen( $ruta, 'r' ) ) !== false ) {
             while ( ( $data = fgetcsv( $handle, 0, $delimitador ) ) !== false ) {
@@ -392,28 +392,50 @@ class LUD_Module_Importaciones {
     }
 
     /**
-     * Importa un CSV con columnas de meses (ahorro).
+     * Importa un CSV con pagos detallados por transacción.
      */
-    private function importar_aportes_anuales( $filas, $anio ) {
+    private function importar_pagos_detallados( $filas ) {
         $errores = array();
         if ( empty( $filas ) ) {
             return array( 'resumen' => 'Archivo vacío.', 'errores' => $errores );
         }
 
-        $encabezados = array_map( 'trim', $filas[0] );
-        $columnas_meses = $this->mapear_columnas_meses( $encabezados );
+        $encabezados = array_map( array( $this, 'normalizar_encabezado' ), $filas[0] );
+        $mapa = array_flip( $encabezados );
+
+        $requeridas = array( 'documento', 'fecha_pago' );
+        foreach ( $requeridas as $columna ) {
+            if ( ! isset( $mapa[ $columna ] ) ) {
+                $errores[] = "Falta la columna obligatoria: {$columna}.";
+            }
+        }
+        if ( ! empty( $errores ) ) {
+            return array( 'resumen' => 'No se pudo procesar el archivo.', 'errores' => $errores );
+        }
+
+        $conceptos_validos = array(
+            'ahorro' => 'ahorro',
+            'cuota_secretaria' => 'cuota_secretaria',
+            'capital_credito' => 'capital_credito',
+            'interes_credito' => 'interes_credito',
+            'interes_mora_credito' => 'interes_mora_credito',
+            'multa' => 'multa',
+            'excedente' => 'excedente',
+        );
+
         $procesadas = 0;
         $transacciones = 0;
 
         for ( $i = 1; $i < count( $filas ); $i++ ) {
-            $fila = $filas[$i];
+            $fila = $filas[ $i ];
             if ( count( array_filter( $fila ) ) === 0 ) {
                 continue;
             }
 
-            $documento = trim( $fila[0] ?? '' );
-            if ( $documento === '' ) {
-                $errores[] = "Fila {$i}: sin cédula.";
+            $documento = trim( $fila[ $mapa['documento'] ] ?? '' );
+            $fecha = $this->normalizar_fecha( $fila[ $mapa['fecha_pago'] ] ?? '' );
+            if ( $documento === '' || $fecha === '' ) {
+                $errores[] = "Fila {$i}: documento o fecha inválidos.";
                 continue;
             }
 
@@ -423,50 +445,77 @@ class LUD_Module_Importaciones {
                 continue;
             }
 
-            foreach ( $columnas_meses as $mes => $indice ) {
-                $monto = $this->normalizar_monto( $fila[ $indice ] ?? '' );
-                if ( $monto <= 0 ) {
+            $detalle = isset( $mapa['detalle'] ) ? sanitize_text_field( $fila[ $mapa['detalle'] ] ?? '' ) : '';
+            $conceptos = array();
+            $total = 0;
+
+            foreach ( $conceptos_validos as $columna => $concepto ) {
+                if ( ! isset( $mapa[ $columna ] ) ) {
                     continue;
                 }
-                $fecha = sprintf( '%04d-%02d-05', $anio, $mes );
-                $this->registrar_movimiento_importado( $user_id, $monto, $fecha, $anio, $mes, array(
-                    'ahorro' => $monto,
-                ) );
-                $transacciones++;
+                $valor = $this->normalizar_monto( $fila[ $mapa[ $columna ] ] ?? 0 );
+                if ( $valor > 0 ) {
+                    $conceptos[ $concepto ] = $valor;
+                    $total += $valor;
+                }
             }
 
+            if ( $total <= 0 ) {
+                $errores[] = "Fila {$i}: pago sin valores.";
+                continue;
+            }
+
+            $this->registrar_movimiento_importado( $user_id, $total, $fecha, $conceptos, $detalle );
+            $transacciones++;
             $procesadas++;
         }
 
         return array(
-            'resumen' => "Socios procesados: {$procesadas}. Movimientos creados: {$transacciones}.",
+            'resumen' => "Pagos procesados: {$procesadas}. Movimientos creados: {$transacciones}.",
             'errores' => $errores,
         );
     }
 
     /**
-     * Importa un CSV con columnas de ahorro, cuota, intereses y multas por mes.
+     * Importa créditos desde CSV (vigentes y cerrados).
      */
-    private function importar_movimientos_detallados( $filas, $anio ) {
+    private function importar_creditos_csv( $filas ) {
         $errores = array();
         if ( empty( $filas ) ) {
             return array( 'resumen' => 'Archivo vacío.', 'errores' => $errores );
         }
 
-        $encabezados = array_map( 'trim', $filas[0] );
-        $mapeo = $this->mapear_columnas_detalladas( $encabezados );
+        $encabezados = array_map( array( $this, 'normalizar_encabezado' ), $filas[0] );
+        $mapa = array_flip( $encabezados );
+
+        $requeridas = array( 'documento', 'tipo_credito', 'monto_aprobado', 'fecha_inicio', 'fecha_fin' );
+        foreach ( $requeridas as $columna ) {
+            if ( ! isset( $mapa[ $columna ] ) ) {
+                $errores[] = "Falta la columna obligatoria: {$columna}.";
+            }
+        }
+        if ( ! empty( $errores ) ) {
+            return array( 'resumen' => 'No se pudo procesar el archivo.', 'errores' => $errores );
+        }
+
         $procesadas = 0;
-        $transacciones = 0;
+        $creditos_creados = 0;
 
         for ( $i = 1; $i < count( $filas ); $i++ ) {
-            $fila = $filas[$i];
+            $fila = $filas[ $i ];
             if ( count( array_filter( $fila ) ) === 0 ) {
                 continue;
             }
 
-            $documento = trim( $fila[0] ?? '' );
-            if ( $documento === '' ) {
-                $errores[] = "Fila {$i}: sin cédula.";
+            $documento = trim( $fila[ $mapa['documento'] ] ?? '' );
+            $tipo = sanitize_text_field( $fila[ $mapa['tipo_credito'] ] ?? 'corriente' );
+            $tipo = $tipo === 'agil' ? 'agil' : 'corriente';
+            $monto = $this->normalizar_monto( $fila[ $mapa['monto_aprobado'] ] ?? 0 );
+            $fecha_inicio = $this->normalizar_fecha( $fila[ $mapa['fecha_inicio'] ] ?? '' );
+            $fecha_fin = $this->normalizar_fecha( $fila[ $mapa['fecha_fin'] ] ?? '' );
+
+            if ( $documento === '' || $monto <= 0 || $fecha_inicio === '' ) {
+                $errores[] = "Fila {$i}: documento, monto o fecha inválidos.";
                 continue;
             }
 
@@ -476,43 +525,54 @@ class LUD_Module_Importaciones {
                 continue;
             }
 
-            foreach ( $mapeo as $mes => $columnas ) {
-                $ahorro = $this->normalizar_monto( $this->valor_columna_segura( $fila, $columnas['ahorro'] ) );
-                $cuota = $this->normalizar_monto( $this->valor_columna_segura( $fila, $columnas['cuota'] ) );
-                $interes = $this->normalizar_monto( $this->valor_columna_segura( $fila, $columnas['interes'] ) );
-                $multa = $this->normalizar_monto( $this->valor_columna_segura( $fila, $columnas['multa'] ) );
-
-                $total = $ahorro + $cuota + $interes + $multa;
-                if ( $total <= 0 ) {
-                    continue;
-                }
-
-                $fecha = sprintf( '%04d-%02d-05', $anio, $mes );
-                $conceptos = array();
-
-                if ( $ahorro > 0 ) {
-                    $conceptos['ahorro'] = $ahorro;
-                }
-                if ( $cuota > 0 ) {
-                    $conceptos['excedente'] = $cuota;
-                }
-                if ( $interes > 0 ) {
-                    $conceptos['interes_credito'] = $interes;
-                }
-                if ( $multa > 0 ) {
-                    $conceptos['multa'] = $multa;
-                }
-
-                $detalle_extra = $cuota > 0 ? 'Cuota mensual mixta reportada (incluye conceptos administrativos y/o crédito).' : '';
-                $this->registrar_movimiento_importado( $user_id, $total, $fecha, $anio, $mes, $conceptos, $detalle_extra );
-                $transacciones++;
+            $tasa = isset( $mapa['tasa_interes'] ) ? $this->normalizar_monto( $fila[ $mapa['tasa_interes'] ] ?? 0 ) : 0;
+            if ( $tasa <= 0 ) {
+                $tasa = $tipo === 'agil' ? 1.5 : 2.0;
             }
 
+            $saldo = isset( $mapa['saldo_actual'] ) ? $this->normalizar_monto( $fila[ $mapa['saldo_actual'] ] ?? 0 ) : 0;
+            $estado = isset( $mapa['estado_credito'] ) ? sanitize_text_field( $fila[ $mapa['estado_credito'] ] ?? '' ) : '';
+            if ( $estado === '' ) {
+                $estado = $saldo > 0 ? 'activo' : ( $fecha_fin && $fecha_fin < date( 'Y-m-d' ) ? 'pagado' : 'activo' );
+            }
+            if ( $saldo <= 0 ) {
+                $saldo = $estado === 'pagado' ? 0 : $monto;
+            }
+
+            $plazo = $this->calcular_plazo_meses( $fecha_inicio, $fecha_fin, $tipo );
+            if ( $plazo <= 0 ) {
+                $errores[] = "Fila {$i}: no se pudo calcular el plazo.";
+                continue;
+            }
+
+            $cuota_inicial = $this->calcular_cuota_inicial_aleman( $monto, $plazo, $tasa );
+
+            global $wpdb;
+            $wpdb->insert( "{$wpdb->prefix}fondo_creditos", array(
+                'user_id' => $user_id,
+                'tipo_credito' => $tipo,
+                'monto_solicitado' => $monto,
+                'monto_aprobado' => $monto,
+                'codigo_seguimiento' => wp_generate_password( 8, false, false ),
+                'plazo_meses' => $plazo,
+                'tasa_interes' => $tasa,
+                'cuota_estimada' => $cuota_inicial,
+                'saldo_actual' => $saldo,
+                'estado' => $estado,
+                'fecha_solicitud' => $fecha_inicio . ' 00:00:00',
+                'fecha_aprobacion' => $fecha_inicio . ' 00:00:00',
+                'datos_entrega' => 'Importación de crédito histórico desde CSV.',
+            ) );
+
+            $credito_id = $wpdb->insert_id;
+            $this->generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo );
+
+            $creditos_creados++;
             $procesadas++;
         }
 
         return array(
-            'resumen' => "Socios procesados: {$procesadas}. Movimientos creados: {$transacciones}.",
+            'resumen' => "Créditos procesados: {$procesadas}. Créditos creados: {$creditos_creados}.",
             'errores' => $errores,
         );
     }
@@ -520,10 +580,10 @@ class LUD_Module_Importaciones {
     /**
      * Inserta transacción y desglose por conceptos.
      */
-    private function registrar_movimiento_importado( $user_id, $monto, $fecha, $anio, $mes, $conceptos, $detalle_extra = '' ) {
+    private function registrar_movimiento_importado( $user_id, $monto, $fecha, $conceptos, $detalle_extra = '' ) {
         global $wpdb;
 
-        $detalle = sprintf( 'Importación histórica %04d-%02d', $anio, $mes );
+        $detalle = 'Importación histórica';
         if ( $detalle_extra ) {
             $detalle .= ' | ' . $detalle_extra;
         }
@@ -976,6 +1036,102 @@ class LUD_Module_Importaciones {
     }
 
     /**
+     * Normaliza encabezados de CSV.
+     */
+    private function normalizar_encabezado( $texto ) {
+        $texto = $this->normalizar_etiqueta( $texto );
+        $texto = str_replace( array( ' ', '-', '.', '/' ), '_', $texto );
+        $texto = preg_replace( '/_+/', '_', $texto );
+        return trim( $texto, '_' );
+    }
+
+    /**
+     * Calcula el plazo en meses según fechas.
+     */
+    private function calcular_plazo_meses( $fecha_inicio, $fecha_fin, $tipo ) {
+        if ( $tipo === 'agil' ) {
+            return 1;
+        }
+        if ( ! $fecha_inicio || ! $fecha_fin ) {
+            return 0;
+        }
+        try {
+            $inicio = new DateTime( $fecha_inicio );
+            $fin = new DateTime( $fecha_fin );
+        } catch ( Exception $e ) {
+            return 0;
+        }
+        $diff = $inicio->diff( $fin );
+        $meses = ( $diff->y * 12 ) + $diff->m;
+        if ( $diff->d >= 1 ) {
+            $meses++;
+        }
+        return max( 1, $meses );
+    }
+
+    /**
+     * Calcula la cuota inicial bajo amortización alemana.
+     */
+    private function calcular_cuota_inicial_aleman( $monto, $plazo, $tasa ) {
+        if ( $plazo <= 0 ) {
+            return 0;
+        }
+        $capital = $monto / $plazo;
+        $interes = $monto * ( $tasa / 100 );
+        return round( $capital + $interes, 2 );
+    }
+
+    /**
+     * Calcula la fecha de la primera cuota según estatutos.
+     */
+    private function calcular_fecha_primera_cuota( $fecha_inicio, $tipo ) {
+        try {
+            $fecha = new DateTime( $fecha_inicio );
+        } catch ( Exception $e ) {
+            return '';
+        }
+        $meses = $tipo === 'agil' ? 1 : 2;
+        $fecha->modify( "+{$meses} months" );
+        $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
+        return $fecha->format( 'Y-m-d' );
+    }
+
+    /**
+     * Genera amortización alemana para créditos importados.
+     */
+    private function generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo ) {
+        global $wpdb;
+        $tabla = $wpdb->prefix . 'fondo_amortizacion';
+        $capital = $monto / $plazo;
+        $saldo = $monto;
+        $fecha_base = $this->calcular_fecha_primera_cuota( $fecha_inicio, $tipo );
+
+        for ( $i = 1; $i <= $plazo; $i++ ) {
+            $interes = $saldo * ( $tasa / 100 );
+            $cuota_total = $capital + $interes;
+            $fecha_vencimiento = $fecha_base;
+            if ( $i > 1 && $fecha_base ) {
+                $fecha = new DateTime( $fecha_base );
+                $fecha->modify( '+' . ( $i - 1 ) . ' months' );
+                $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
+                $fecha_vencimiento = $fecha->format( 'Y-m-d' );
+            }
+
+            $wpdb->insert( $tabla, array(
+                'credito_id' => $credito_id,
+                'numero_cuota' => $i,
+                'fecha_vencimiento' => $fecha_vencimiento,
+                'capital_programado' => $capital,
+                'interes_programado' => $interes,
+                'valor_cuota_total' => $cuota_total,
+                'estado' => 'pendiente',
+            ) );
+
+            $saldo -= $capital;
+        }
+    }
+
+    /**
      * Normaliza montos con separadores locales.
      */
     private function normalizar_monto( $valor ) {
@@ -1002,7 +1158,7 @@ class LUD_Module_Importaciones {
     }
 
     /**
-     * Normaliza fechas (dd/mm/yyyy o serial Excel).
+     * Normaliza fechas (dd/mm/yyyy, yyyy-mm-dd o serial Excel).
      */
     private function normalizar_fecha( $valor ) {
         $valor = trim( (string) $valor );
@@ -1016,6 +1172,10 @@ class LUD_Module_Importaciones {
         $fecha = DateTime::createFromFormat( 'd/m/Y', $valor );
         if ( $fecha ) {
             return $fecha->format( 'Y-m-d' );
+        }
+        $fecha_iso = DateTime::createFromFormat( 'Y/m/d', $valor );
+        if ( $fecha_iso ) {
+            return $fecha_iso->format( 'Y-m-d' );
         }
         return '';
     }

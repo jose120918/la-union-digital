@@ -1622,8 +1622,8 @@ class LUD_Admin_Tesoreria {
         
         $capital_mensual_base = round($monto / $plazo, 2);
         $suma_capitales = $capital_mensual_base * $plazo;
-        $diferencia = $monto - $suma_capitales; 
-        $interes_mensual = round($monto * ($tasa / 100), 2);
+        $diferencia = $monto - $suma_capitales;
+        $saldo = $monto;
 
         $fecha_base = new DateTime( current_time('mysql') );
         $fecha_base->modify('+2 months'); 
@@ -1637,6 +1637,7 @@ class LUD_Admin_Tesoreria {
             }
             $capital_cuota = $capital_mensual_base;
             if ( $i == $plazo ) $capital_cuota += $diferencia;
+            $interes_mensual = round($saldo * ($tasa / 100), 2);
             $valor_cuota_total = $capital_cuota + $interes_mensual;
 
             $wpdb->insert( $tabla_amort, [
@@ -1647,6 +1648,8 @@ class LUD_Admin_Tesoreria {
                 'valor_cuota_total' => $valor_cuota_total,
                 'estado' => 'pendiente'
             ]);
+
+            $saldo -= $capital_cuota;
         }
     }
 
