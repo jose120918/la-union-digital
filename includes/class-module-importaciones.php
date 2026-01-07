@@ -562,7 +562,15 @@ class LUD_Module_Importaciones {
                 continue;
             }
 
-            $cuota_inicial = $this->calcular_cuota_inicial_aleman( $monto, $plazo, $tasa );
+            $resultado_amortizacion = LUD_Amortizacion::construir_tabla_amortizacion(
+                $monto,
+                $tasa,
+                $plazo,
+                $fecha_inicio,
+                $tipo,
+                $monto_pagado
+            );
+            $cuota_inicial = $resultado_amortizacion['resumen']['cuota_inicial'] ?? 0;
 
             global $wpdb;
             $wpdb->insert( "{$wpdb->prefix}fondo_creditos", array(
@@ -583,7 +591,19 @@ class LUD_Module_Importaciones {
 
             $credito_id = $wpdb->insert_id;
             $this->registrar_pago_credito_acumulado( $credito_id, $monto_pagado );
-            $this->generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo, $monto_pagado );
+            foreach ( $resultado_amortizacion['cuotas'] as $cuota ) {
+                $wpdb->insert( "{$wpdb->prefix}fondo_amortizacion", array(
+                    'credito_id' => $credito_id,
+                    'numero_cuota' => $cuota['numero'],
+                    'fecha_vencimiento' => $cuota['fecha_vencimiento'],
+                    'capital_programado' => $cuota['capital'],
+                    'interes_programado' => $cuota['interes'],
+                    'valor_cuota_total' => $cuota['total'],
+                    'fecha_pago' => $cuota['fecha_pago'],
+                    'monto_pagado' => $cuota['monto_pagado'],
+                    'estado' => $cuota['estado'],
+                ) );
+            }
 
             $creditos_creados++;
             $procesadas++;
@@ -703,8 +723,29 @@ class LUD_Module_Importaciones {
         $cuotas_insertadas = 0;
 
         if ( empty( $tabla['cuotas'] ) ) {
-            $this->generar_amortizacion_aleman( $credito_id, $meta['monto'], $meta['tasa'], $meta['cuotas'], $meta['fecha_inicio'], $tipo_credito, $credito_pagado );
-            $cuotas_insertadas = $meta['cuotas'];
+            $resultado_amortizacion = LUD_Amortizacion::construir_tabla_amortizacion(
+                $meta['monto'],
+                $meta['tasa'],
+                $meta['cuotas'],
+                $meta['fecha_inicio'],
+                $tipo_credito,
+                $credito_pagado
+            );
+
+            foreach ( $resultado_amortizacion['cuotas'] as $cuota ) {
+                $wpdb->insert( "{$wpdb->prefix}fondo_amortizacion", array(
+                    'credito_id' => $credito_id,
+                    'numero_cuota' => $cuota['numero'],
+                    'fecha_vencimiento' => $cuota['fecha_vencimiento'],
+                    'capital_programado' => $cuota['capital'],
+                    'interes_programado' => $cuota['interes'],
+                    'valor_cuota_total' => $cuota['total'],
+                    'fecha_pago' => $cuota['fecha_pago'],
+                    'monto_pagado' => $cuota['monto_pagado'],
+                    'estado' => $cuota['estado'],
+                ) );
+                $cuotas_insertadas++;
+            }
         } else {
             foreach ( $tabla['cuotas'] as $cuota ) {
                 $wpdb->insert( "{$wpdb->prefix}fondo_amortizacion", array(
@@ -1101,105 +1142,6 @@ class LUD_Module_Importaciones {
             $meses++;
         }
         return max( 1, $meses );
-    }
-
-    /**
-     * Calcula la cuota inicial bajo amortización alemana.
-     */
-    private function calcular_cuota_inicial_aleman( $monto, $plazo, $tasa ) {
-        if ( $plazo <= 0 ) {
-            return 0;
-        }
-        $capital = $monto / $plazo;
-        $interes = $monto * ( $tasa / 100 );
-        return round( $capital + $interes, 2 );
-    }
-
-    /**
-     * Calcula la fecha de la primera cuota según estatutos.
-     */
-    private function calcular_fecha_primera_cuota( $fecha_inicio, $tipo ) {
-        try {
-            $fecha = new DateTime( $fecha_inicio );
-        } catch ( Exception $e ) {
-            return '';
-        }
-        $meses = $tipo === 'agil' ? 1 : 2;
-        $fecha->modify( "+{$meses} months" );
-        $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
-        return $fecha->format( 'Y-m-d' );
-    }
-
-    /**
-     * Calcula interés prorrateado por días para la primera cuota importada.
-     */
-    private function calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento ) {
-        try {
-            $inicio = new DateTime( $fecha_inicio );
-            $vencimiento = new DateTime( $fecha_vencimiento );
-        } catch ( Exception $e ) {
-            return round( $saldo * ( $tasa / 100 ), 2 );
-        }
-
-        $dias = (int) $inicio->diff( $vencimiento )->format( '%a' );
-        if ( $dias <= 0 ) {
-            return round( $saldo * ( $tasa / 100 ), 2 );
-        }
-
-        $factor_diario = ( $tasa / 100 ) / 30;
-        return round( $saldo * $factor_diario * $dias, 2 );
-    }
-
-    /**
-     * Genera amortización alemana para créditos importados.
-     */
-    private function generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo, $capital_pagado = 0 ) {
-        global $wpdb;
-        $tabla = $wpdb->prefix . 'fondo_amortizacion';
-        $capital = $monto / $plazo;
-        $saldo = $monto;
-        $fecha_base = $this->calcular_fecha_primera_cuota( $fecha_inicio, $tipo );
-        $capital_pagado = max( 0, $capital_pagado );
-        $capital_pagado_acumulado = 0;
-
-        for ( $i = 1; $i <= $plazo; $i++ ) {
-            $fecha_vencimiento = $fecha_base;
-            if ( $i > 1 && $fecha_base ) {
-                $fecha = new DateTime( $fecha_base );
-                $fecha->modify( '+' . ( $i - 1 ) . ' months' );
-                $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
-                $fecha_vencimiento = $fecha->format( 'Y-m-d' );
-            }
-
-            $interes = $i === 1
-                ? $this->calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento )
-                : $saldo * ( $tasa / 100 );
-            $cuota_total = $capital + $interes;
-
-            $estado = 'pendiente';
-            $fecha_pago = null;
-            $monto_pagado = 0;
-            $capital_pagado_acumulado += $capital;
-            if ( $capital_pagado > 0 && $capital_pagado_acumulado <= $capital_pagado + 0.01 ) {
-                $estado = 'pagado';
-                $fecha_pago = $fecha_vencimiento;
-                $monto_pagado = $cuota_total;
-            }
-
-            $wpdb->insert( $tabla, array(
-                'credito_id' => $credito_id,
-                'numero_cuota' => $i,
-                'fecha_vencimiento' => $fecha_vencimiento,
-                'capital_programado' => $capital,
-                'interes_programado' => $interes,
-                'valor_cuota_total' => $cuota_total,
-                'fecha_pago' => $fecha_pago,
-                'monto_pagado' => $monto_pagado,
-                'estado' => $estado,
-            ) );
-
-            $saldo -= $capital;
-        }
     }
 
     /**

@@ -23,9 +23,12 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `includes/class-admin-tesoreria.php`: panel administrativo (dashboard, desembolsos, cierres, cambios de acciones, gestión de socios, retiros).
 - `includes/class-debug-tools.php`: utilidades de depuración (solo roles con privilegios altos).
 - `includes/class-module-importaciones.php`: importaciones masivas de socios, aportes históricos y créditos desde CSV/XLSX.
+- `includes/class-amortizacion.php`: cálculo centralizado de amortización alemana (importaciones, desembolsos y PDFs).
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.1:** redondeo hacia arriba a múltiplos de 1.000 en todos los valores de amortización, manteniendo el prorrateo unificado.
+- **1.5.0:** centralización del cálculo de amortización alemana para importaciones, desembolsos y PDFs, con prorrateo coherente en primera cuota.
 - **1.4.9:** eliminación de duplicados de `render_historial_anual` para evitar el error de redeclaración de la clase.
 - **1.4.8:** corrección de sintaxis en `LUD_Admin_Tesoreria` para permitir la activación del plugin sin errores fatales.
 
@@ -94,7 +97,7 @@ Creación gestionada por `LUD_DB_Installer`:
 
 ## Contratos y títulos valor
 - El contrato de mutuo se genera como PDF con cláusulas de aceleración, imputación de pagos, reporte a centrales y mérito ejecutivo. Incluye datos del crédito (monto, tasa, plazo, IP y agente) y firmas del solicitante y deudor solidario.
-- El pagaré se acompaña de la carta de instrucciones en un mismo PDF, firmado por ambos. El valor se calcula con capital + intereses estimados y fecha de vencimiento estimada (día 5 según acta del 21 de septiembre de 2024).
+- El pagaré se acompaña de la carta de instrucciones en un mismo PDF, firmado por ambos. El valor se calcula con capital + intereses estimados y fecha de vencimiento estimada (día 5 según acta del 21 de septiembre de 2024), usando la misma función de amortización aplicada en desembolsos e importaciones.
 - Ambos archivos se guardan en `uploads/fondo_seguro/contratos/` y se registran en el movimiento de desembolso para descarga segura desde el historial y Tesorería.
 
 ## Panel de Tesorería
@@ -104,8 +107,9 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Desembolsos y cierres:**
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
-  - La amortización se calcula desde la fecha real de desembolso y aplica la regla de primera cuota (día 5 del mes siguiente al subsiguiente).
+  - La amortización se calcula desde la fecha real de desembolso y aplica la regla de primera cuota (día 5 del mes siguiente al subsiguiente), usando la función centralizada compartida con importaciones y PDFs.
   - La primera cuota prorratea intereses por días desde el desembolso hasta la fecha de vencimiento, el resto mantiene interés mensual.
+  - Los valores de capital, interés y cuota total se redondean hacia arriba al múltiplo de 1.000 más cercano (pesos colombianos).
   - Liquidación anual de utilidades (`admin_post_lud_liquidacion_anual`).
 - **Retiros voluntarios:**
   - Card de “📤 Solicitudes de Retiro” en el dashboard que lista retiros `pendiente`.
@@ -203,7 +207,8 @@ El módulo `LUD_Module_Importaciones` vive en Tesorería y está diseñado para 
    - Columnas opcionales: `tasa_interes`, `estado_credito`, `saldo_actual`, `monto_pagado`.
    - `monto_pagado` representa **capital pagado** (no incluye intereses ni multas).
    - Se genera la tabla de amortización bajo **sistema Alemán** (capital constante + interés sobre saldo).
-   - La primera cuota prorratea intereses por días desde `fecha_inicio` hasta su vencimiento.
+   - La primera cuota prorratea intereses por días desde `fecha_inicio` hasta su vencimiento, usando la función centralizada de amortización.
+   - Todos los valores de amortización se redondean hacia arriba a múltiplos de 1.000.
    - Si el archivo no trae número de cuotas, se calcula con `fecha_inicio` y `fecha_fin`.
    - Las cuotas se marcan como pagadas según el capital pagado acumulado al importar.
    - Si `fecha_inicio` es futura, el crédito se guarda como `programado` y se activa automáticamente en la fecha indicada.
