@@ -2,7 +2,7 @@
 /*
 Plugin Name: Sistema La Unión Digital
 Description: Core financiero y gestión de socios para el Fondo de Inversión.
-Version: 1.2.0
+Version: 1.4.7
 Author: Jose Muñoz
 */
 
@@ -30,6 +30,7 @@ require_once LUD_PLUGIN_DIR . 'includes/class-frontend-shortcodes.php';
 require_once LUD_PLUGIN_DIR . 'includes/class-admin-tesoreria.php';
 require_once LUD_PLUGIN_DIR . 'includes/class-notificaciones.php';
 require_once LUD_PLUGIN_DIR . 'includes/class-debug-tools.php';
+require_once LUD_PLUGIN_DIR . 'includes/class-module-importaciones.php';
 
 /**
  * Inicializa el plugin instanciando cada módulo necesario.
@@ -42,6 +43,7 @@ function lud_init_plugin() {
     new LUD_Frontend_Shortcodes();
     new LUD_Admin_Tesoreria();
     new LUD_Debug_Tools(); // Solo visible para Admin (update_core)
+    new LUD_Module_Importaciones();
     lud_notificaciones(); // Instancia única para gestión de correos
 }
 add_action( 'plugins_loaded', 'lud_init_plugin' );
@@ -92,7 +94,7 @@ function lud_create_roles() {
  * Encola los estilos del plugin en el frontend.
  */
 function lud_enqueue_assets() {
-    wp_enqueue_style( 'lud-main-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.2.0' );
+    wp_enqueue_style( 'lud-main-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.4.4' );
 }
 add_action( 'wp_enqueue_scripts', 'lud_enqueue_assets' ); // Frontend
 
@@ -100,7 +102,7 @@ add_action( 'wp_enqueue_scripts', 'lud_enqueue_assets' ); // Frontend
  * Encola los estilos del plugin en el área de administración.
  */
 function lud_admin_enqueue_assets() {
-    wp_enqueue_style( 'lud-admin-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.2.0' );
+    wp_enqueue_style( 'lud-admin-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.4.4' );
 }
 
 add_action( 'admin_enqueue_scripts', 'lud_admin_enqueue_assets' );
