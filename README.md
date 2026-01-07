@@ -40,6 +40,7 @@ Creación gestionada por `LUD_DB_Installer`:
 - `fondo_recaudos_detalle`: desglose de recaudos por concepto (ahorro, multa, intereses, capital, etc.).
 - `fondo_utilidades_mensuales`: utilidades asignadas y liquidadas a cada socio por mes/año.
 - `fondo_retiros`: solicitudes de retiro voluntario con estado, monto estimado, usuario que responde, fecha y motivo de respuesta.
+- `fondo_creditos_pagos`: total pagado acumulado por crédito (histórico de saldo reportado).
 
 ## Shortcodes disponibles (frontend)
 - `[lud_reportar_pago]` (`LUD_Module_Transacciones::render_form_pago`):
@@ -191,8 +192,10 @@ El módulo `LUD_Module_Importaciones` vive en Tesorería y está diseñado para 
    - Columna opcional: `detalle`.
 3. **Créditos históricos (`creditos_historicos.csv`)**
    - Columnas obligatorias: `documento`, `tipo_credito`, `monto_aprobado`, `fecha_inicio`, `fecha_fin`.
-   - Columnas opcionales: `tasa_interes`, `estado_credito`, `saldo_actual`.
+   - Columnas opcionales: `tasa_interes`, `estado_credito`, `saldo_actual`, `monto_pagado`.
+   - `monto_pagado` representa **capital pagado** (no incluye intereses ni multas).
    - Se genera la tabla de amortización bajo **sistema Alemán** (capital constante + interés sobre saldo).
+   - Las cuotas se marcan como pagadas según el capital pagado acumulado al importar.
 4. **Créditos vigentes (`*.xlsx`)**
    - Lee metadatos del crédito (monto, tasa, número de cuotas, fechas) y crea un registro en `fondo_creditos`.
    - Genera la tabla de amortización en `fondo_amortizacion` usando capital, interés, cuota total y abonos pagados.

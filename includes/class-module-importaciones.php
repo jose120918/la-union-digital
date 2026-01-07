@@ -531,11 +531,18 @@ class LUD_Module_Importaciones {
             }
 
             $saldo = isset( $mapa['saldo_actual'] ) ? $this->normalizar_monto( $fila[ $mapa['saldo_actual'] ] ?? 0 ) : 0;
+            $monto_pagado = isset( $mapa['monto_pagado'] ) ? $this->normalizar_monto( $fila[ $mapa['monto_pagado'] ] ?? 0 ) : 0;
             $estado = isset( $mapa['estado_credito'] ) ? sanitize_text_field( $fila[ $mapa['estado_credito'] ] ?? '' ) : '';
             if ( $estado === '' ) {
                 $estado = $saldo > 0 ? 'activo' : ( $fecha_fin && $fecha_fin < date( 'Y-m-d' ) ? 'pagado' : 'activo' );
             }
-            if ( $saldo <= 0 ) {
+            if ( $monto_pagado < 0 ) {
+                $monto_pagado = 0;
+            }
+            if ( $monto_pagado > 0 && $saldo <= 0 ) {
+                $saldo = max( 0, $monto - $monto_pagado );
+            }
+            if ( $saldo <= 0 && $monto_pagado <= 0 ) {
                 $saldo = $estado === 'pagado' ? 0 : $monto;
             }
 
@@ -565,7 +572,8 @@ class LUD_Module_Importaciones {
             ) );
 
             $credito_id = $wpdb->insert_id;
-            $this->generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo );
+            $this->registrar_pago_credito_acumulado( $credito_id, $monto_pagado );
+            $this->generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo, $monto_pagado );
 
             $creditos_creados++;
             $procesadas++;
@@ -1099,12 +1107,14 @@ class LUD_Module_Importaciones {
     /**
      * Genera amortización alemana para créditos importados.
      */
-    private function generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo ) {
+    private function generar_amortizacion_aleman( $credito_id, $monto, $tasa, $plazo, $fecha_inicio, $tipo, $capital_pagado = 0 ) {
         global $wpdb;
         $tabla = $wpdb->prefix . 'fondo_amortizacion';
         $capital = $monto / $plazo;
         $saldo = $monto;
         $fecha_base = $this->calcular_fecha_primera_cuota( $fecha_inicio, $tipo );
+        $capital_pagado = max( 0, $capital_pagado );
+        $capital_pagado_acumulado = 0;
 
         for ( $i = 1; $i <= $plazo; $i++ ) {
             $interes = $saldo * ( $tasa / 100 );
@@ -1117,6 +1127,16 @@ class LUD_Module_Importaciones {
                 $fecha_vencimiento = $fecha->format( 'Y-m-d' );
             }
 
+            $estado = 'pendiente';
+            $fecha_pago = null;
+            $monto_pagado = 0;
+            $capital_pagado_acumulado += $capital;
+            if ( $capital_pagado > 0 && $capital_pagado_acumulado <= $capital_pagado + 0.01 ) {
+                $estado = 'pagado';
+                $fecha_pago = $fecha_vencimiento;
+                $monto_pagado = $cuota_total;
+            }
+
             $wpdb->insert( $tabla, array(
                 'credito_id' => $credito_id,
                 'numero_cuota' => $i,
@@ -1124,11 +1144,25 @@ class LUD_Module_Importaciones {
                 'capital_programado' => $capital,
                 'interes_programado' => $interes,
                 'valor_cuota_total' => $cuota_total,
-                'estado' => 'pendiente',
+                'fecha_pago' => $fecha_pago,
+                'monto_pagado' => $monto_pagado,
+                'estado' => $estado,
             ) );
 
             $saldo -= $capital;
         }
+    }
+
+    /**
+     * Registra el total pagado acumulado de un crédito.
+     */
+    private function registrar_pago_credito_acumulado( $credito_id, $monto_pagado ) {
+        global $wpdb;
+        $wpdb->insert( "{$wpdb->prefix}fondo_creditos_pagos", array(
+            'credito_id' => $credito_id,
+            'monto_pagado' => $monto_pagado,
+            'fecha_actualizacion' => current_time( 'mysql' ),
+        ) );
     }
 
     /**
