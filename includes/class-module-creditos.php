@@ -343,10 +343,11 @@ class LUD_Module_Creditos {
                 </div>
 
                 <div class="lud-sim-result">
-                    <div class="lud-sim-row"><span>Cuota Capital:</span><span id="sim_capital">$0</span></div>
-                    <div class="lud-sim-row"><span>Interés Mensual (<span id="sim_tasa">2%</span>):</span><span id="sim_interes">$0</span></div>
+                    <div class="lud-sim-row"><span>Capital mensual:</span><span id="sim_capital">$0</span></div>
+                    <div class="lud-sim-row"><span>Interés mensual inicial (<span id="sim_tasa">2%</span>):</span><span id="sim_interes">$0</span></div>
                     <div class="lud-sim-row"><span>Interés total del crédito:</span><span id="sim_interes_total">$0</span></div>
-                    <div class="lud-sim-total"><span>Cuota Mensual Aprox:</span><span id="sim_total">$0</span></div>
+                    <div class="lud-sim-row"><span>Cuota inicial:</span><span id="sim_cuota_inicial">$0</span></div>
+                    <div class="lud-sim-total"><span>Cuota final aprox:</span><span id="sim_total">$0</span></div>
                     <small style="display:block; color:#777; margin-top:6px;">El interés total es la suma de los intereses mensuales a lo largo del plazo.</small>
                     
                     <div id="bloque_cruce" style="display:none; margin-top:15px; border-top:1px solid #c8e6c9; padding-top:10px;">
@@ -447,13 +448,16 @@ class LUD_Module_Creditos {
 
                 const capitalMensual = monto / plazo;
                 const interesMensual = monto * tasa;
-                const cuotaTotal = capitalMensual + interesMensual;
-                const interesTotal = interesMensual * plazo;
+                const cuotaInicial = capitalMensual + interesMensual;
+                const interesTotal = monto * tasa * ((plazo + 1) / 2);
+                const interesFinal = capitalMensual * tasa;
+                const cuotaFinal = capitalMensual + interesFinal;
 
                 document.getElementById('sim_capital').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(capitalMensual));
                 document.getElementById('sim_interes').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(interesMensual));
                 document.getElementById('sim_interes_total').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(interesTotal));
-                document.getElementById('sim_total').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(cuotaTotal));
+                document.getElementById('sim_cuota_inicial').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(cuotaInicial));
+                document.getElementById('sim_total').innerText = '$ ' + new Intl.NumberFormat().format(Math.round(cuotaFinal));
 
                 // Validación Refinanciación
                 let valido = true;
@@ -478,7 +482,7 @@ class LUD_Module_Creditos {
                 }
 
                 // Regla de cuota mínima: ninguna cuota mensual puede ser menor a $50.000 según estatutos.
-                if (tipoActual === 'corriente' && cuotaTotal < 50000) {
+                if (tipoActual === 'corriente' && cuotaFinal < 50000) {
                     valido = false;
                     alertaCuota.style.display = 'block';
                 } else {
@@ -574,15 +578,14 @@ class LUD_Module_Creditos {
         $tasa = ($tipo == 'corriente') ? 2.00 : 1.50;
         if ($tipo == 'agil') $plazo = 1;
         
-        // Cuota Estimada Simple (para referencia en BD)
+        // Cuota Estimada Alemana (capital constante + interés sobre saldo)
         $capital_mes = $monto / $plazo;
         $interes_mes = $monto * ($tasa/100);
-        
-        // Round final para guardar en la BD como referencia limpia
-        $cuota = round($capital_mes + $interes_mes, 2);
+        $cuota_inicial = round( $capital_mes + $interes_mes, 2 );
+        $cuota_final = round( $capital_mes + ( $capital_mes * ($tasa/100) ), 2 );
 
         // Regla estatutaria: la cuota mensual no puede ser inferior a $50.000
-        if ( $tipo === 'corriente' && $cuota < 50000 ) {
+        if ( $tipo === 'corriente' && $cuota_final < 50000 ) {
             wp_die( '<div style="padding:30px; font-family:sans-serif; color:#b71c1c;"><h2>⚠️ Solicitud no válida</h2><p>La cuota mensual resultante es inferior a $50.000. Ajusta monto o plazo según los estatutos.</p></div>' );
         }
         
@@ -622,7 +625,7 @@ class LUD_Module_Creditos {
             array(
                 'user_id' => $user_id, 'tipo_credito' => $tipo, 'monto_solicitado' => $monto,
                 'codigo_seguimiento' => $codigo_unico, 'plazo_meses' => $plazo, 'tasa_interes' => $tasa, 
-                'cuota_estimada' => $cuota, 'deudor_solidario_id' => $deudor_id, 
+                'cuota_estimada' => $cuota_inicial, 'deudor_solidario_id' => $deudor_id, 
                 'firma_solicitante' => $firma_filename,
                 
                 // Nuevos campos
