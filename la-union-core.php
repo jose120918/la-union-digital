@@ -2,7 +2,7 @@
 /*
 Plugin Name: Sistema La Unión Digital
 Description: Core financiero y gestión de socios para el Fondo de Inversión.
-Version: 1.5.0
+Version: 1.5.1
 Author: Jose Muñoz
 */
 
@@ -95,7 +95,7 @@ function lud_create_roles() {
  * Encola los estilos del plugin en el frontend.
  */
 function lud_enqueue_assets() {
-    wp_enqueue_style( 'lud-main-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.5.0' );
+    wp_enqueue_style( 'lud-main-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.5.1' );
 }
 add_action( 'wp_enqueue_scripts', 'lud_enqueue_assets' ); // Frontend
 
@@ -103,7 +103,7 @@ add_action( 'wp_enqueue_scripts', 'lud_enqueue_assets' ); // Frontend
  * Encola los estilos del plugin en el área de administración.
  */
 function lud_admin_enqueue_assets() {
-    wp_enqueue_style( 'lud-admin-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.5.0' );
+    wp_enqueue_style( 'lud-admin-style', LUD_PLUGIN_URL . 'assets/css/lud-style.css', array(), '1.5.1' );
 }
 
 add_action( 'admin_enqueue_scripts', 'lud_admin_enqueue_assets' );

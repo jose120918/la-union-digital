@@ -27,6 +27,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.1:** redondeo hacia arriba a múltiplos de 1.000 en todos los valores de amortización, manteniendo el prorrateo unificado.
 - **1.5.0:** centralización del cálculo de amortización alemana para importaciones, desembolsos y PDFs, con prorrateo coherente en primera cuota.
 - **1.4.9:** eliminación de duplicados de `render_historial_anual` para evitar el error de redeclaración de la clase.
 - **1.4.8:** corrección de sintaxis en `LUD_Admin_Tesoreria` para permitir la activación del plugin sin errores fatales.
@@ -108,6 +109,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
   - La amortización se calcula desde la fecha real de desembolso y aplica la regla de primera cuota (día 5 del mes siguiente al subsiguiente), usando la función centralizada compartida con importaciones y PDFs.
   - La primera cuota prorratea intereses por días desde el desembolso hasta la fecha de vencimiento, el resto mantiene interés mensual.
+  - Los valores de capital, interés y cuota total se redondean hacia arriba al múltiplo de 1.000 más cercano (pesos colombianos).
   - Liquidación anual de utilidades (`admin_post_lud_liquidacion_anual`).
 - **Retiros voluntarios:**
   - Card de “📤 Solicitudes de Retiro” en el dashboard que lista retiros `pendiente`.
@@ -206,6 +208,7 @@ El módulo `LUD_Module_Importaciones` vive en Tesorería y está diseñado para 
    - `monto_pagado` representa **capital pagado** (no incluye intereses ni multas).
    - Se genera la tabla de amortización bajo **sistema Alemán** (capital constante + interés sobre saldo).
    - La primera cuota prorratea intereses por días desde `fecha_inicio` hasta su vencimiento, usando la función centralizada de amortización.
+   - Todos los valores de amortización se redondean hacia arriba a múltiplos de 1.000.
    - Si el archivo no trae número de cuotas, se calcula con `fecha_inicio` y `fecha_fin`.
    - Las cuotas se marcan como pagadas según el capital pagado acumulado al importar.
    - Si `fecha_inicio` es futura, el crédito se guarda como `programado` y se activa automáticamente en la fecha indicada.

@@ -9,6 +9,17 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class LUD_Amortizacion {
 
     /**
+     * Redondea un valor hacia arriba al múltiplo de 1.000 más cercano.
+     */
+    private static function redondear_a_mil( $valor ) {
+        $valor = floatval( $valor );
+        if ( $valor <= 0 ) {
+            return 0;
+        }
+        return ceil( $valor / 1000 ) * 1000;
+    }
+
+    /**
      * Calcula la fecha de la primera cuota según estatutos (día 5 del mes correspondiente).
      */
     public static function calcular_fecha_primera_cuota( $fecha_inicio, $tipo_credito ) {
@@ -90,15 +101,17 @@ class LUD_Amortizacion {
                 $fecha_vencimiento_final = $fecha_vencimiento;
             }
 
-            $capital_cuota = $capital_mensual_base;
+            $capital_cuota_base = $capital_mensual_base;
             if ( $i === $plazo ) {
-                $capital_cuota = round( $capital_cuota + $diferencia, 2 );
+                $capital_cuota_base = round( $capital_cuota_base + $diferencia, 2 );
             }
 
-            $interes_cuota = $i === 1
+            $interes_cuota_base = $i === 1
                 ? self::calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento )
                 : round( $saldo * ( $tasa / 100 ), 2 );
-            $valor_cuota_total = round( $capital_cuota + $interes_cuota, 2 );
+            $capital_cuota = self::redondear_a_mil( $capital_cuota_base );
+            $interes_cuota = self::redondear_a_mil( $interes_cuota_base );
+            $valor_cuota_total = self::redondear_a_mil( $capital_cuota_base + $interes_cuota_base );
 
             $interes_total += $interes_cuota;
             $total_general += $valor_cuota_total;
@@ -124,7 +137,7 @@ class LUD_Amortizacion {
                 'monto_pagado' => $monto_pagado,
             );
 
-            $saldo -= $capital_cuota;
+            $saldo -= $capital_cuota_base;
         }
 
         return array(
