@@ -22,6 +22,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `includes/class-frontend-shortcodes.php`: shortcodes de autoservicio (resumen, historial, beneficiario, registro de socio, retiro).
 - `includes/class-admin-tesoreria.php`: panel administrativo (dashboard, desembolsos, cierres, cambios de acciones, gestión de socios, retiros).
 - `includes/class-debug-tools.php`: utilidades de depuración (solo roles con privilegios altos).
+- `includes/class-module-importaciones.php`: importaciones masivas de socios, aportes históricos y créditos desde CSV/XLSX.
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Instalación y activación
@@ -109,6 +110,8 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Presidencia** (`view=presidencia`): panel exclusivo para aprobar o rechazar solicitudes de ingreso pendientes, con motivo obligatorio al rechazar, historial de decisiones y acceso al PDF cargado por el solicitante.
 - **Control de asistencia** (`view=control_asistencia`): pestaña para marcar presentes/ausentes en la asamblea; los ausentes reciben una multa pendiente de $10.000 con detalle “Inasistencia Asamblea (fecha)”.
 - **Historial de intereses:** consulta de utilidades liquidadas (`view=historial_intereses`).
+- **Históricos anuales** (`view=historial_anual`): resumen anual por concepto (ahorro, capital, intereses, multas, secretaría y cuota mixta).
+- **Importaciones** (`view=importaciones`): carga masiva de socios y movimientos históricos, además de créditos vigentes desde XLSX con tabla de amortización.
 - **Configuración del fondo (solo administradores):** pestaña “⚙️ Configuración del Fondo” con dos bloques:
   - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
@@ -171,6 +174,39 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - Nuevos conceptos de recaudo: añadir valores en `fondo_recaudos_detalle` y ajustar vistas de tesorería si requieren KPI dedicado.
 - Nuevas validaciones de crédito: extender `LUD_Module_Creditos::verificar_sancion_mora` o agregar verificaciones adicionales antes de `wp_die`/`wp_redirect`.
 - Integración con pasarelas de pago: reutilizar `procesar_pago` para validar montos y registrar transacción, sustituyendo la subida de comprobantes por webhooks.
+
+## Módulo de importaciones (socios, aportes y créditos)
+El módulo `LUD_Module_Importaciones` vive en Tesorería y está diseñado para migrar información histórica de manera controlada.
+
+### Archivos y mapeos soportados
+1. **Socios actuales (`Datos usuarios.CSV`)**
+   - Crea/actualiza usuarios con la cédula como `user_login` y rol `lud_socio`.
+   - Inserta o actualiza la ficha en `fondo_cuentas`.
+   - Guarda beneficiarios adicionales en `user_meta` (`lud_beneficiarios_detalle`) y el aporte actual en `lud_aporte_actual`.
+2. **Ahorro mensual 2024 (`2024.csv`)**
+   - Genera transacciones aprobadas por mes con concepto `ahorro` en `fondo_recaudos_detalle`.
+   - Actualiza `fecha_ultimo_aporte` según el último mes importado.
+3. **Movimientos 2025 (`2025.csv`)**
+   - Cada mes se desglosa en ahorro (`ahorro`), intereses (`interes_credito`) y multas (`multa`) si aplica.
+   - La columna de **cuota** se registra como **cuota mixta** (`excedente`) porque puede incluir ahorro, secretaría y/o crédito.
+4. **Movimientos 2026 (`2026.csv`)**
+   - Similar a 2025, con columnas de enero y la cuota mixta (`excedente`).
+5. **Créditos vigentes (`*.xlsx`)**
+   - Lee metadatos del crédito (monto, tasa, número de cuotas, fechas) y crea un registro en `fondo_creditos`.
+   - Genera la tabla de amortización en `fondo_amortizacion` usando capital, interés, cuota total y abonos pagados.
+   - Permite buscar al socio por cédula o por un fragmento de nombre si el archivo está identificado solo por nombre.
+
+### Supuestos operativos y coherencia estatutaria
+- Se importan movimientos como **aprobados** para conservar el histórico.
+- Se respeta el límite de 10 acciones por socio porque la ficha del socio conserva `numero_acciones` y el motor de pagos aplica la regla estatutaria.
+- Los importes de ahorro, intereses y multas respetan los conceptos definidos en estatutos (Art. 7 y Art. 16).
+- El detalle de beneficiarios múltiples se almacena en `user_meta` y se visualiza en Tesorería y en la zona de socio.
+
+### Recomendaciones de uso
+1. Importar **socios** antes de cualquier movimiento.
+2. Importar **2024**, luego **2025** y finalmente **2026** para mantener la fecha de último aporte.
+3. Importar créditos solo cuando el socio exista y tenga su cédula correcta.
+4. Para XLSX se requiere la extensión **zip** de PHP activa (usa `ZipArchive`).
 
 ## Depuración
 - `includes/class-debug-tools.php` expone utilidades adicionales para roles con privilegios altos (p.ej., limpiar data de prueba, revisar tablas). Activar solo en entornos controlados.
