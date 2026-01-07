@@ -22,6 +22,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `includes/class-frontend-shortcodes.php`: shortcodes de autoservicio (resumen, historial, beneficiario, registro de socio, retiro).
 - `includes/class-admin-tesoreria.php`: panel administrativo (dashboard, desembolsos, cierres, cambios de acciones, gestión de socios, retiros).
 - `includes/class-debug-tools.php`: utilidades de depuración (solo roles con privilegios altos).
+- `includes/class-module-importaciones.php`: importaciones masivas de socios, aportes históricos y créditos desde CSV/XLSX.
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Instalación y activación
@@ -35,10 +36,12 @@ Creación gestionada por `LUD_DB_Installer`:
 - `fondo_transacciones`: pagos reportados (aporte, cuota, multa, gasto, etc.) con estados y comprobantes.
 - `fondo_creditos`: solicitudes y créditos activos con tipo (corriente/ágil), montos, plazos, firmas, tracking, estado y metadatos forenses (IP, user agent).
 - `fondo_amortizacion`: tabla de cuotas programadas y pagadas por crédito.
+- `fondo_creditos_pagos`: total de capital pagado por crédito (histórico de saldo reportado).
 - `fondo_gastos`: gastos operativos de la tesorería.
 - `fondo_recaudos_detalle`: desglose de recaudos por concepto (ahorro, multa, intereses, capital, etc.).
 - `fondo_utilidades_mensuales`: utilidades asignadas y liquidadas a cada socio por mes/año.
 - `fondo_retiros`: solicitudes de retiro voluntario con estado, monto estimado, usuario que responde, fecha y motivo de respuesta.
+- `fondo_creditos_pagos`: total pagado acumulado por crédito (histórico de saldo reportado).
 
 ## Shortcodes disponibles (frontend)
 - `[lud_reportar_pago]` (`LUD_Module_Transacciones::render_form_pago`):
@@ -48,7 +51,7 @@ Creación gestionada por `LUD_DB_Installer`:
   - Registra transacción en estado pendiente.
 - `[lud_simulador_credito]` (`LUD_Module_Creditos::render_simulador`):
   - Verifica sanciones por mora (90 días), liquidez disponible y regla del 70% para refinanciación.
-  - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%), mostrando interés total del crédito y cuota mensual.
+  - Simula corrientes (hasta 36 meses, tasa 2%) y ágiles (1 mes, tasa 1.5%) usando amortización alemana (capital constante e interés sobre saldo).
   - Bloquea solicitudes de crédito corriente cuya cuota resultante sea menor a $50.000 (alerta visual y validación backend, conforme estatutos).
   - Calcula y muestra un score de pago (0-100) con barra de viabilidad basada en cuotas pagadas y moras; se usa para priorizar la liberación de la cola de liquidez.
   - Incluye tooltip que explica el cálculo del score (cuotas pagadas vs. cuotas en mora y créditos terminados) para que el socio entienda el orden de prioridad.
@@ -93,6 +96,7 @@ Creación gestionada por `LUD_DB_Installer`:
 ## Panel de Tesorería
 Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):
 - **Dashboard general** (`view=dashboard`): KPIs de caja, intereses, multas, reservas de secretaría, disponibilidad para créditos, y paneles de aprobación. Incluye Caja Secretaría con el recaudo del mes y un histórico de entregas mensuales.
+  - La caja y el disponible para prestar se calculan con el recaudo del **año en curso** y el saldo vigente de créditos, evitando sumar años cerrados.
 - **Desembolsos y cierres:**
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
@@ -109,6 +113,8 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Presidencia** (`view=presidencia`): panel exclusivo para aprobar o rechazar solicitudes de ingreso pendientes, con motivo obligatorio al rechazar, historial de decisiones y acceso al PDF cargado por el solicitante.
 - **Control de asistencia** (`view=control_asistencia`): pestaña para marcar presentes/ausentes en la asamblea; los ausentes reciben una multa pendiente de $10.000 con detalle “Inasistencia Asamblea (fecha)”.
 - **Historial de intereses:** consulta de utilidades liquidadas (`view=historial_intereses`).
+- **Históricos anuales** (`view=historial_anual`): resumen anual por concepto (ahorro, capital, intereses, multas, secretaría y cuota mixta).
+- **Importaciones** (`view=importaciones`): carga masiva de socios y movimientos históricos, además de créditos vigentes desde XLSX con tabla de amortización.
 - **Configuración del fondo (solo administradores):** pestaña “⚙️ Configuración del Fondo” con dos bloques:
   - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
@@ -116,6 +122,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado). Los pagos sembrados se registran en el día 5 de cada mes y sincronizan `fecha_ultimo_aporte` con el último pago generado para evitar incoherencias de mora. “Limpiar Datos de Prueba” elimina únicamente esos usuarios y sus tablas relacionadas.
 - **Vista previa legal:** en “🧪 LUD Tests” puedes enviar a un correo indicado un contrato de mutuo y su pagaré con carta de instrucciones generados con TCPDF y datos ficticios (no crea desembolsos reales).
 - **Dashboard Tesorería:** lista de morosos ordenada A-Z, Caja Secretaría con recaudo del mes e histórico de entregas, y ficha de socio con fecha de incorporación y estado detallado de mora/al día.
+  - La hoja de vida de socio muestra score crediticio, resumen de créditos activos y tabla de amortización desplegable.
 
 ## Reglas y límites vigentes
 - Máximo 10 acciones por socio: la UI y el backend bloquean cantidades superiores al programar cambios desde Tesorería.
@@ -171,6 +178,43 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - Nuevos conceptos de recaudo: añadir valores en `fondo_recaudos_detalle` y ajustar vistas de tesorería si requieren KPI dedicado.
 - Nuevas validaciones de crédito: extender `LUD_Module_Creditos::verificar_sancion_mora` o agregar verificaciones adicionales antes de `wp_die`/`wp_redirect`.
 - Integración con pasarelas de pago: reutilizar `procesar_pago` para validar montos y registrar transacción, sustituyendo la subida de comprobantes por webhooks.
+
+## Módulo de importaciones (socios, pagos y créditos)
+El módulo `LUD_Module_Importaciones` vive en Tesorería y está diseñado para migrar información histórica con pagos exactos por transacción.
+
+### Archivos y mapeos soportados
+1. **Socios actuales (`Datos usuarios.CSV`)**
+   - Crea/actualiza usuarios con la cédula como `user_login` y rol `lud_socio`.
+   - Inserta o actualiza la ficha en `fondo_cuentas`.
+   - Guarda beneficiarios adicionales en `user_meta` (`lud_beneficiarios_detalle`) y el aporte actual en `lud_aporte_actual`.
+2. **Pagos históricos (`pagos_historicos.csv`)**
+   - Cada fila representa **un pago real** con fecha exacta.
+   - Columnas obligatorias: `documento`, `fecha_pago`.
+   - Columnas de conceptos (todas aceptan 0): `ahorro`, `cuota_secretaria`, `capital_credito`, `interes_credito`, `interes_mora_credito`, `multa`, `excedente`.
+   - Columna opcional: `detalle`.
+3. **Créditos históricos (`creditos_historicos.csv`)**
+   - Columnas obligatorias: `documento`, `tipo_credito`, `monto_aprobado`, `fecha_inicio`, `fecha_fin`.
+   - Columnas opcionales: `tasa_interes`, `estado_credito`, `saldo_actual`, `monto_pagado`.
+   - `monto_pagado` representa **capital pagado** (no incluye intereses ni multas).
+   - Se genera la tabla de amortización bajo **sistema Alemán** (capital constante + interés sobre saldo).
+   - Las cuotas se marcan como pagadas según el capital pagado acumulado al importar.
+   - Si `fecha_inicio` es futura, el crédito se guarda como `programado` y se activa automáticamente en la fecha indicada.
+4. **Créditos vigentes (`*.xlsx`)**
+   - Lee metadatos del crédito (monto, tasa, número de cuotas, fechas) y crea un registro en `fondo_creditos`.
+   - Genera la tabla de amortización en `fondo_amortizacion` usando capital, interés, cuota total y abonos pagados.
+   - Permite buscar al socio por cédula o por un fragmento de nombre si el archivo está identificado solo por nombre.
+
+### Supuestos operativos y coherencia estatutaria
+- Se importan movimientos como **aprobados** para conservar el histórico.
+- Se respeta el límite de 10 acciones por socio porque la ficha del socio conserva `numero_acciones` y el motor de pagos aplica la regla estatutaria.
+- Los importes de ahorro, intereses y multas respetan los conceptos definidos en estatutos (Art. 7 y Art. 16).
+- El detalle de beneficiarios múltiples se almacena en `user_meta` y se visualiza en Tesorería y en la zona de socio.
+
+### Recomendaciones de uso
+1. Importar **socios** antes de cualquier movimiento.
+2. Importar **pagos históricos** con fechas exactas para cuadrar la caja real.
+3. Importar créditos solo cuando el socio exista y tenga su cédula correcta.
+4. Para XLSX se requiere la extensión **zip** de PHP activa (usa `ZipArchive`).
 
 ## Depuración
 - `includes/class-debug-tools.php` expone utilidades adicionales para roles con privilegios altos (p.ej., limpiar data de prueba, revisar tablas). Activar solo en entornos controlados.

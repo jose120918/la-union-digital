@@ -99,7 +99,7 @@ class LUD_DB_Installer {
             contrato_pdf VARCHAR(255) NULL,
             pagare_pdf VARCHAR(255) NULL,
             saldo_actual DECIMAL(15,2) DEFAULT 0,
-            estado ENUM('pendiente_deudor', 'pendiente_tesoreria', 'fila_liquidez', 'activo', 'rechazado', 'pagado', 'mora') DEFAULT 'pendiente_deudor',
+            estado ENUM('pendiente_deudor', 'pendiente_tesoreria', 'fila_liquidez', 'programado', 'activo', 'rechazado', 'pagado', 'mora') DEFAULT 'pendiente_deudor',
             fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
             fecha_aprobacion DATETIME NULL,
             detalle_rechazo TEXT NULL,
@@ -169,6 +169,15 @@ class LUD_DB_Installer {
             usuario_respuesta BIGINT(20) UNSIGNED NULL,
             motivo_respuesta TEXT NULL,
             KEY user_id (user_id)
+        ) $charset_collate;";
+
+        // 9. Pagos acumulados de créditos
+        $sql[] = "CREATE TABLE {$wpdb->prefix}fondo_creditos_pagos (
+            id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            credito_id BIGINT(20) UNSIGNED NOT NULL,
+            monto_pagado DECIMAL(15,2) NOT NULL DEFAULT 0,
+            fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+            KEY credito_id (credito_id)
         ) $charset_collate;";
 
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
