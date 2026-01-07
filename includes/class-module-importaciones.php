@@ -17,6 +17,9 @@ class LUD_Module_Importaciones {
         add_action( 'admin_post_lud_importar_pagos_detallados', array( $this, 'procesar_importacion_pagos_detallados' ) );
         add_action( 'admin_post_lud_importar_creditos_csv', array( $this, 'procesar_importacion_creditos_csv' ) );
         add_action( 'admin_post_lud_importar_credito_xlsx', array( $this, 'procesar_importacion_credito' ) );
+
+        add_action( 'lud_tarea_creditos_programados', array( $this, 'procesar_creditos_programados' ) );
+        $this->programar_creditos_programados();
     }
 
     /**
@@ -534,7 +537,14 @@ class LUD_Module_Importaciones {
             $monto_pagado = isset( $mapa['monto_pagado'] ) ? $this->normalizar_monto( $fila[ $mapa['monto_pagado'] ] ?? 0 ) : 0;
             $estado = isset( $mapa['estado_credito'] ) ? sanitize_text_field( $fila[ $mapa['estado_credito'] ] ?? '' ) : '';
             if ( $estado === '' ) {
-                $estado = $saldo > 0 ? 'activo' : ( $fecha_fin && $fecha_fin < date( 'Y-m-d' ) ? 'pagado' : 'activo' );
+                if ( $fecha_inicio && $fecha_inicio > date( 'Y-m-d' ) ) {
+                    $estado = 'programado';
+                } else {
+                    $estado = $saldo > 0 ? 'activo' : ( $fecha_fin && $fecha_fin < date( 'Y-m-d' ) ? 'pagado' : 'activo' );
+                }
+            }
+            if ( ! in_array( $estado, array( 'programado', 'activo', 'pagado', 'mora', 'rechazado', 'pendiente_tesoreria', 'fila_liquidez' ), true ) ) {
+                $estado = 'programado';
             }
             if ( $monto_pagado < 0 ) {
                 $monto_pagado = 0;
@@ -1163,6 +1173,41 @@ class LUD_Module_Importaciones {
             'monto_pagado' => $monto_pagado,
             'fecha_actualizacion' => current_time( 'mysql' ),
         ) );
+    }
+
+    /**
+     * Programa la tarea para activar créditos con fecha futura.
+     */
+    private function programar_creditos_programados() {
+        if ( ! wp_next_scheduled( 'lud_tarea_creditos_programados' ) ) {
+            wp_schedule_event( time(), 'daily', 'lud_tarea_creditos_programados' );
+        }
+    }
+
+    /**
+     * Activa créditos programados cuando llega la fecha de inicio.
+     */
+    public function procesar_creditos_programados() {
+        global $wpdb;
+        $hoy = date( 'Y-m-d' );
+        $tabla = $wpdb->prefix . 'fondo_creditos';
+
+        $creditos = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id FROM $tabla WHERE estado = %s AND DATE(fecha_solicitud) <= %s",
+            'programado',
+            $hoy
+        ) );
+
+        foreach ( $creditos as $credito ) {
+            $wpdb->update(
+                $tabla,
+                array(
+                    'estado' => 'activo',
+                    'fecha_aprobacion' => current_time( 'mysql' ),
+                ),
+                array( 'id' => $credito->id )
+            );
+        }
     }
 
     /**

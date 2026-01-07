@@ -36,6 +36,7 @@ Creación gestionada por `LUD_DB_Installer`:
 - `fondo_transacciones`: pagos reportados (aporte, cuota, multa, gasto, etc.) con estados y comprobantes.
 - `fondo_creditos`: solicitudes y créditos activos con tipo (corriente/ágil), montos, plazos, firmas, tracking, estado y metadatos forenses (IP, user agent).
 - `fondo_amortizacion`: tabla de cuotas programadas y pagadas por crédito.
+- `fondo_creditos_pagos`: total de capital pagado por crédito (histórico de saldo reportado).
 - `fondo_gastos`: gastos operativos de la tesorería.
 - `fondo_recaudos_detalle`: desglose de recaudos por concepto (ahorro, multa, intereses, capital, etc.).
 - `fondo_utilidades_mensuales`: utilidades asignadas y liquidadas a cada socio por mes/año.
@@ -196,6 +197,7 @@ El módulo `LUD_Module_Importaciones` vive en Tesorería y está diseñado para 
    - `monto_pagado` representa **capital pagado** (no incluye intereses ni multas).
    - Se genera la tabla de amortización bajo **sistema Alemán** (capital constante + interés sobre saldo).
    - Las cuotas se marcan como pagadas según el capital pagado acumulado al importar.
+   - Si `fecha_inicio` es futura, el crédito se guarda como `programado` y se activa automáticamente en la fecha indicada.
 4. **Créditos vigentes (`*.xlsx`)**
    - Lee metadatos del crédito (monto, tasa, número de cuotas, fechas) y crea un registro en `fondo_creditos`.
    - Genera la tabla de amortización en `fondo_amortizacion` usando capital, interés, cuota total y abonos pagados.
