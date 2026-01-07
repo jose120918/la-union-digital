@@ -63,14 +63,17 @@ class LUD_Admin_Tesoreria {
         $active_dash = ($view == 'dashboard') ? 'nav-tab-active' : '';
         $active_socio = ($view == 'buscar_socio' || $view == 'detalle_socio') ? 'nav-tab-active' : '';
         $active_hist = ($view == 'historial_intereses') ? 'nav-tab-active' : '';
+        $active_hist_anual = ($view == 'historial_anual') ? 'nav-tab-active' : '';
         $active_config = ($view == 'configuracion_fondo') ? 'nav-tab-active' : '';
         $active_asistencia = ($view == 'control_asistencia') ? 'nav-tab-active' : '';
         $active_presidencia = ($view == 'presidencia') ? 'nav-tab-active' : '';
+        $active_importaciones = ($view == 'importaciones') ? 'nav-tab-active' : '';
         
         echo '<nav class="nav-tab-wrapper">';
         echo '<a href="?page=lud-tesoreria&view=dashboard" class="nav-tab '.$active_dash.'" title="Ayuda: Aquí ves el dinero total en caja, apruebas pagos y desembolsas créditos.">📊 Tablero Principal</a>';
         echo '<a href="?page=lud-tesoreria&view=buscar_socio" class="nav-tab '.$active_socio.'" title="Ayuda: Aquí buscas a un socio para ver su historia completa.">👥 Directorio y Consultas</a>';
         echo '<a href="?page=lud-tesoreria&view=historial_intereses" class="nav-tab '.$active_hist.'" title="Ayuda: Lista de los dineros entregados en efectivo cada Diciembre.">📜 Historial Intereses Pagados</a>';
+        echo '<a href="?page=lud-tesoreria&view=historial_anual" class="nav-tab '.$active_hist_anual.'" title="Resumen anual de ahorro, créditos e intereses.">🧮 Históricos Anuales</a>';
         if ( current_user_can( 'lud_manage_tesoreria' ) ) {
             echo '<a href="?page=lud-tesoreria&view=control_asistencia" class="nav-tab '.$active_asistencia.'" title="Marcar asistencia a asambleas y generar multas automáticas.">🗓️ Control de Asistencia</a>';
         }
@@ -79,6 +82,9 @@ class LUD_Admin_Tesoreria {
         }
         if ( current_user_can( 'manage_options' ) ) {
             echo '<a href="?page=lud-tesoreria&view=configuracion_fondo" class="nav-tab '.$active_config.'" title="Configura plantillas de correo y pruebas SMTP.">⚙️ Configuración del Fondo</a>';
+        }
+        if ( current_user_can( 'lud_manage_tesoreria' ) ) {
+            echo '<a href="?page=lud-tesoreria&view=importaciones" class="nav-tab '.$active_importaciones.'" title="Carga masiva de socios, aportes y créditos históricos.">📥 Importaciones</a>';
         }
         echo '</nav>';
         echo '<br>';
@@ -91,6 +97,8 @@ class LUD_Admin_Tesoreria {
             $this->render_hoja_vida_socio();
         } elseif ( $view == 'historial_intereses' ) {
             $this->render_historial_intereses();
+        } elseif ( $view == 'historial_anual' ) {
+            $this->render_historial_anual();
         } elseif ( $view == 'editar_socio' ) {
             $this->render_editor_socio();
         } elseif ( $view == 'presidencia' ) {
@@ -99,6 +107,8 @@ class LUD_Admin_Tesoreria {
             $this->render_control_asistencia();
         } elseif ( $view == 'configuracion_fondo' && current_user_can( 'manage_options' ) ) {
             $this->render_configuracion_fondo();
+        } elseif ( $view == 'importaciones' && current_user_can( 'lud_manage_tesoreria' ) ) {
+            LUD_Module_Importaciones::render_vista_importaciones();
         }
         echo '</div>';
     }
@@ -167,20 +177,35 @@ class LUD_Admin_Tesoreria {
         $puede_editar = current_user_can('lud_manage_tesoreria');
 
         // 1. CÁLCULOS DE CAJA (Dinero Físico Real)
-        // Entradas
-        $total_entradas = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle");
-        // Salidas Operativas
-        $total_gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos");
-        // Salidas por Créditos
-        $total_prestado = $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'pagado', 'mora')");
-        // Salidas por Pago de Intereses (Liquidación Diciembre)
+        // Entradas (solo año actual para no sumar históricos de años cerrados).
+        $total_entradas = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE YEAR(fecha_recaudo) = %d",
+            $anio_actual
+        ));
+        // Salidas Operativas (solo año actual).
+        $total_gastos = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE YEAR(fecha_gasto) = %d",
+            $anio_actual
+        ));
+        // Salidas por Créditos (saldo vigente real).
+        $total_prestado = $wpdb->get_var("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora')");
+        // Salidas por Pago de Intereses (Liquidación Diciembre del año actual)
         // Al liquidar, el dinero sale de la caja para entregarse al socio. Debemos restarlo.
-        $total_intereses_pagados = $wpdb->get_var("SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado'");
+        $total_intereses_pagados = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado' AND anio = %d",
+            $anio_actual
+        ));
 
         $dinero_fisico = floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado) - floatval($total_intereses_pagados);
 
-        $recaudo_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria'");
-        $gasto_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria'");
+        $recaudo_sec = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND YEAR(fecha_recaudo) = %d",
+            $anio_actual
+        ));
+        $gasto_sec = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND YEAR(fecha_gasto) = %d",
+            $anio_actual
+        ));
         $fondo_secretaria = floatval($recaudo_sec) - floatval($gasto_sec);
         
         $disponible_para_creditos = $dinero_fisico - $fondo_secretaria;
@@ -716,12 +741,14 @@ class LUD_Admin_Tesoreria {
         $transacciones = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_transacciones WHERE user_id = $user_id $filtro_fechas ORDER BY fecha_registro DESC");
         $creditos = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}fondo_creditos WHERE user_id = $user_id ORDER BY fecha_solicitud DESC");
         
-        $tx_module = new LUD_Module_Transacciones(); 
+        $tx_module = new LUD_Module_Transacciones();
         $deuda_info = $tx_module->calcular_deuda_usuario($user_id);
         $estado_general = ($deuda_info['total_admin'] + $deuda_info['creditos'] > 0) ? 'En Mora' : 'Al Día';
 
         // Verificar si hay cambio programado
         $cambio_pendiente = get_user_meta($user_id, 'lud_acciones_programadas', true);
+        $beneficiarios_extra = get_user_meta($user_id, 'lud_beneficiarios_detalle', true);
+        $beneficiarios_extra = $beneficiarios_extra ? json_decode( $beneficiarios_extra, true ) : array();
         ?>
         
         <p><a href="?page=lud-tesoreria&view=buscar_socio" class="button">← Volver al Directorio</a></p>
@@ -745,6 +772,28 @@ class LUD_Admin_Tesoreria {
                     <tr><th>Fecha de Incorporación:</th><td><?php echo $cuenta->fecha_ingreso_fondo ? date_i18n('d M Y', strtotime($cuenta->fecha_ingreso_fondo)) : 'N/D'; ?></td></tr>
                     <tr><th>Beneficiario:</th><td><?php echo esc_html($cuenta->beneficiario_nombre); ?> (<?php echo esc_html($cuenta->beneficiario_parentesco); ?>)</td></tr>
                     <tr><th>Contacto Ben:</th><td><?php echo isset($cuenta->beneficiario_telefono) ? esc_html($cuenta->beneficiario_telefono) : '-'; ?></td></tr>
+                    <tr>
+                        <th>Beneficiarios extra:</th>
+                        <td>
+                            <?php if ( ! empty( $beneficiarios_extra ) ) : ?>
+                                <ul style="margin:0; padding-left:16px;">
+                                    <?php foreach ( $beneficiarios_extra as $benef ) : ?>
+                                        <li>
+                                            <?php echo esc_html( $benef['nombre'] ?? '' ); ?>
+                                            <?php if ( ! empty( $benef['parentesco'] ) ) : ?>
+                                                (<?php echo esc_html( $benef['parentesco'] ); ?>)
+                                            <?php endif; ?>
+                                            <?php if ( ! empty( $benef['porcentaje'] ) ) : ?>
+                                                - <?php echo esc_html( $benef['porcentaje'] ); ?>
+                                            <?php endif; ?>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php else : ?>
+                                <span>-</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
                 </table>
             </div>
 
@@ -915,6 +964,70 @@ class LUD_Admin_Tesoreria {
                         <td><?php echo $p->display_name; ?></td>
                         <td style="color:#2e7d32; font-weight:bold;">$ <?php echo number_format($p->total_pagado); ?></td>
                     </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    /**
+     * Muestra resumen anual de recaudos por concepto.
+     */
+    private function render_historial_anual() {
+        global $wpdb;
+
+        $resumen = $wpdb->get_results("
+            SELECT
+                YEAR(fecha_recaudo) AS anio,
+                SUM(CASE WHEN concepto = 'ahorro' THEN monto ELSE 0 END) AS total_ahorro,
+                SUM(CASE WHEN concepto = 'capital_credito' THEN monto ELSE 0 END) AS total_capital,
+                SUM(CASE WHEN concepto = 'interes_credito' THEN monto ELSE 0 END) AS total_interes,
+                SUM(CASE WHEN concepto = 'multa' THEN monto ELSE 0 END) AS total_multa,
+                SUM(CASE WHEN concepto = 'cuota_secretaria' THEN monto ELSE 0 END) AS total_secretaria,
+                SUM(CASE WHEN concepto = 'excedente' THEN monto ELSE 0 END) AS total_cuota_mixta
+            FROM {$wpdb->prefix}fondo_recaudos_detalle
+            GROUP BY YEAR(fecha_recaudo)
+            ORDER BY anio DESC
+        ");
+        ?>
+        <div class="lud-card">
+            <h3>🧮 Históricos Anuales del Fondo</h3>
+            <p>Este resumen consolida el recaudo por año. La liquidación de intereses se calcula año a año y no mezcla periodos anteriores en el cálculo vigente.</p>
+
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th>Año</th>
+                        <th>Ahorro</th>
+                        <th>Capital Créditos</th>
+                        <th>Intereses</th>
+                        <th>Multas</th>
+                        <th>Secretaría</th>
+                        <th>Cuota Mixta</th>
+                        <th>Total Recaudo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if ( empty( $resumen ) ) : ?>
+                    <tr><td colspan="8">Aún no hay recaudos históricos registrados.</td></tr>
+                <?php else : ?>
+                    <?php foreach ( $resumen as $fila ) : ?>
+                        <?php
+                        $total = floatval( $fila->total_ahorro ) + floatval( $fila->total_capital ) + floatval( $fila->total_interes )
+                               + floatval( $fila->total_multa ) + floatval( $fila->total_secretaria ) + floatval( $fila->total_cuota_mixta );
+                        ?>
+                        <tr>
+                            <td><strong><?php echo esc_html( $fila->anio ); ?></strong></td>
+                            <td>$ <?php echo number_format( $fila->total_ahorro ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_capital ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_interes ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_multa ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_secretaria ); ?></td>
+                            <td>$ <?php echo number_format( $fila->total_cuota_mixta ); ?></td>
+                            <td><strong>$ <?php echo number_format( $total ); ?></strong></td>
+                        </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
                 </tbody>
