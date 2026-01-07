@@ -33,8 +33,7 @@ class LUD_Admin_Tesoreria {
         add_action( 'admin_post_lud_guardar_config_correo', array( $this, 'procesar_config_correos' ) );
         add_action( 'admin_post_lud_enviar_test_correo', array( $this, 'procesar_test_correo' ) );
         add_action( 'admin_post_lud_guardar_asistencia', array( $this, 'procesar_guardado_asistencia' ) );
-}
-}
+    }
 
     /**
      * Crea el menú principal de tesorería visible para los roles con permiso.
