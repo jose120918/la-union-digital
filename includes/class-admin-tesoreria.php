@@ -1758,43 +1758,6 @@ class LUD_Admin_Tesoreria {
     }
 
     /**
-     * Calcula la fecha de la primera cuota según estatutos (día 5 del mes correspondiente).
-     */
-    private function calcular_fecha_primera_cuota( $fecha_inicio, $tipo_credito ) {
-        try {
-            $fecha = new DateTime( $fecha_inicio );
-        } catch ( Exception $e ) {
-            return current_time( 'Y-m-d' );
-        }
-
-        $meses = $tipo_credito === 'agil' ? 1 : 2;
-        $fecha->modify( "+{$meses} months" );
-        $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
-
-        return $fecha->format( 'Y-m-d' );
-    }
-
-    /**
-     * Calcula interés prorrateado por días para la primera cuota.
-     */
-    private function calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento ) {
-        try {
-            $inicio = new DateTime( $fecha_inicio );
-            $vencimiento = new DateTime( $fecha_vencimiento );
-        } catch ( Exception $e ) {
-            return round( $saldo * ( $tasa / 100 ), 2 );
-        }
-
-        $dias = (int) $inicio->diff( $vencimiento )->format( '%a' );
-        if ( $dias <= 0 ) {
-            return round( $saldo * ( $tasa / 100 ), 2 );
-        }
-
-        $factor_diario = ( $tasa / 100 ) / 30;
-        return round( $saldo * $factor_diario * $dias, 2 );
-    }
-
-    /**
      * Genera la tabla de amortización para un crédito (corriente o ágil).
      */
     private function generar_tabla_amortizacion($credito_id) {
@@ -1804,43 +1767,28 @@ class LUD_Admin_Tesoreria {
         $monto = floatval($credito->monto_solicitado);
         $plazo = intval($credito->plazo_meses);
         $tasa = floatval($credito->tasa_interes);
-        
-        $capital_mensual_base = round($monto / $plazo, 2);
-        $suma_capitales = $capital_mensual_base * $plazo;
-        $diferencia = $monto - $suma_capitales;
-        $saldo = $monto;
-
         $fecha_inicio = $credito->fecha_aprobacion ?: $credito->fecha_solicitud;
         if ( ! $fecha_inicio ) {
             $fecha_inicio = current_time( 'mysql' );
         }
-        $fecha_base = $this->calcular_fecha_primera_cuota( $fecha_inicio, $credito->tipo_credito );
+        $resultado_amortizacion = LUD_Amortizacion::construir_tabla_amortizacion(
+            $monto,
+            $tasa,
+            $plazo,
+            $fecha_inicio,
+            $credito->tipo_credito
+        );
 
-        for ($i = 1; $i <= $plazo; $i++) {
-            $fecha_vencimiento = $fecha_base;
-            if ($i > 1) {
-                $fecha = new DateTime( $fecha_base );
-                $fecha->modify("+" . ($i - 1) . " months");
-                $fecha->setDate($fecha->format('Y'), $fecha->format('m'), 5);
-                $fecha_vencimiento = $fecha->format( 'Y-m-d' );
-            }
-            $capital_cuota = $capital_mensual_base;
-            if ( $i == $plazo ) $capital_cuota += $diferencia;
-            $interes_cuota = $i === 1
-                ? $this->calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento )
-                : round( $saldo * ( $tasa / 100 ), 2 );
-            $valor_cuota_total = $capital_cuota + $interes_cuota;
-
+        foreach ( $resultado_amortizacion['cuotas'] as $cuota ) {
             $wpdb->insert( $tabla_amort, [
-                'credito_id' => $credito_id, 'numero_cuota' => $i,
-                'fecha_vencimiento' => $fecha_vencimiento,
-                'capital_programado' => $capital_cuota,
-                'interes_programado' => $interes_cuota,
-                'valor_cuota_total' => $valor_cuota_total,
+                'credito_id' => $credito_id,
+                'numero_cuota' => $cuota['numero'],
+                'fecha_vencimiento' => $cuota['fecha_vencimiento'],
+                'capital_programado' => $cuota['capital'],
+                'interes_programado' => $cuota['interes'],
+                'valor_cuota_total' => $cuota['total'],
                 'estado' => 'pendiente'
             ]);
-
-            $saldo -= $capital_cuota;
         }
     }
 

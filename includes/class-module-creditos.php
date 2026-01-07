@@ -578,11 +578,23 @@ class LUD_Module_Creditos {
         $tasa = ($tipo == 'corriente') ? 2.00 : 1.50;
         if ($tipo == 'agil') $plazo = 1;
         
-        // Cuota Estimada Alemana (capital constante + interés sobre saldo)
-        $capital_mes = $monto / $plazo;
-        $interes_mes = $monto * ($tasa/100);
-        $cuota_inicial = round( $capital_mes + $interes_mes, 2 );
-        $cuota_final = round( $capital_mes + ( $capital_mes * ($tasa/100) ), 2 );
+        // Cuota estimada con amortización alemana centralizada (capital constante + interés sobre saldo)
+        $fecha_calculo = current_time( 'mysql' );
+        $resultado_amortizacion = LUD_Amortizacion::construir_tabla_amortizacion(
+            $monto,
+            $tasa,
+            $plazo,
+            $fecha_calculo,
+            $tipo
+        );
+        $resumen_amortizacion = $resultado_amortizacion['resumen'] ?? array();
+        $cuotas_amortizacion = $resultado_amortizacion['cuotas'] ?? array();
+        $cuota_inicial = $resumen_amortizacion['cuota_inicial'] ?? 0;
+        $cuota_final = 0;
+        if ( ! empty( $cuotas_amortizacion ) ) {
+            $ultima_cuota = end( $cuotas_amortizacion );
+            $cuota_final = $ultima_cuota['total'] ?? 0;
+        }
 
         // Regla estatutaria: la cuota mensual no puede ser inferior a $50.000
         if ( $tipo === 'corriente' && $cuota_final < 50000 ) {
@@ -1044,19 +1056,34 @@ class LUD_Module_Creditos {
         $monto = floatval( $credito_row->monto_aprobado ?: $credito_row->monto_solicitado );
         $plazo = intval( $credito_row->plazo_meses );
         $tasa = floatval( $credito_row->tasa_interes );
-        $interes_mensual = round( $monto * ( $tasa / 100 ), 2 );
-        $interes_total = round( $interes_mensual * $plazo, 2 );
-        $total_general = round( $monto + $interes_total, 2 );
-
-        $fecha_base = new DateTime( current_time('mysql') );
-        $fecha_base->modify('+2 months');
-        $fecha_base->setDate($fecha_base->format('Y'), $fecha_base->format('m'), 5);
-        $fecha_primera = clone $fecha_base;
-        $fecha_vencimiento = clone $fecha_base;
-        if ( $plazo > 1 ) {
-            $fecha_vencimiento->modify('+' . ( $plazo - 1 ) . ' months');
-            $fecha_vencimiento->setDate($fecha_vencimiento->format('Y'), $fecha_vencimiento->format('m'), 5);
+        $fecha_inicio = $credito_row->fecha_aprobacion ?: $credito_row->fecha_solicitud;
+        if ( ! $fecha_inicio ) {
+            $fecha_inicio = current_time( 'mysql' );
         }
+
+        $resultado_amortizacion = LUD_Amortizacion::construir_tabla_amortizacion(
+            $monto,
+            $tasa,
+            $plazo,
+            $fecha_inicio,
+            $credito_row->tipo_credito
+        );
+        $resumen_amortizacion = $resultado_amortizacion['resumen'] ?? array();
+        $interes_total = $resumen_amortizacion['interes_total'] ?? 0;
+        $total_general = $resumen_amortizacion['total_general'] ?? 0;
+        $fecha_primera = $resumen_amortizacion['fecha_primera'] ?? '';
+        $fecha_vencimiento = $resumen_amortizacion['fecha_vencimiento'] ?? '';
+        $cuota_estimada = $resumen_amortizacion['cuota_inicial'] ?? 0;
+
+        $fecha_primera_formateada = $fecha_primera
+            ? date_i18n( 'd/m/Y', strtotime( $fecha_primera ) )
+            : date_i18n( 'd/m/Y' );
+        $fecha_vencimiento_formateada = $fecha_vencimiento
+            ? date_i18n( 'd/m/Y', strtotime( $fecha_vencimiento ) )
+            : date_i18n( 'd/m/Y' );
+        $fecha_contrato = $fecha_inicio
+            ? date_i18n( 'd/m/Y', strtotime( $fecha_inicio ) )
+            : date_i18n( 'd/m/Y' );
 
         $monto_letras = self::convertir_numero_a_letras( $monto );
         $total_letras = self::convertir_numero_a_letras( $total_general );
@@ -1077,14 +1104,14 @@ class LUD_Module_Creditos {
             'plazo_meses'            => $plazo,
             'tasa_interes_texto'     => number_format( $tasa, 2 ) . '%',
             'detalle_entrega'        => $credito_row->datos_entrega ?: 'Entrega según instrucciones de Tesorería',
-            'fecha_primera_cuota'    => $fecha_primera->format('d/m/Y'),
-            'fecha_vencimiento'      => $fecha_vencimiento->format('d/m/Y'),
+            'fecha_primera_cuota'    => $fecha_primera_formateada,
+            'fecha_vencimiento'      => $fecha_vencimiento_formateada,
             'tipo_credito'           => ucfirst( $credito_row->tipo_credito ),
-            'cuota_estimada'         => '$' . number_format( $credito_row->cuota_estimada, 0, ',', '.' ),
+            'cuota_estimada'         => '$' . number_format( $cuota_estimada ?: $credito_row->cuota_estimada, 0, ',', '.' ),
             'ip'                     => $credito_row->ip_registro,
             'user_agent'             => $credito_row->user_agent,
             'fecha_solicitud'        => $credito_row->fecha_solicitud,
-            'fecha_contrato'         => date_i18n( 'd/m/Y' ),
+            'fecha_contrato'         => $fecha_contrato,
             'total_general'          => $total_general
         );
     }
