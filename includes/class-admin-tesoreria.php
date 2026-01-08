@@ -178,21 +178,13 @@ class LUD_Admin_Tesoreria {
         $puede_editar = current_user_can('lud_manage_tesoreria');
 
         // 1. CÁLCULOS DE CAJA (Dinero Físico Real)
-        // Comentario: usamos corte desde enero del año actual para reflejar caja física vigente.
-        $fecha_corte_caja = date('Y-01-01');
-        // Entradas desde la fecha de corte (evita sumar históricos anteriores).
+        // Entradas históricas (para que el arqueo refleje todo el fondo acumulado).
         $total_entradas = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE fecha_recaudo >= %s",
-                $fecha_corte_caja
-            )
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle"
         );
-        // Salidas operativas desde la fecha de corte.
+        // Salidas operativas históricas.
         $total_gastos = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE fecha_gasto >= %s",
-                $fecha_corte_caja
-            )
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos"
         );
         // Salidas por Créditos (saldo vigente real).
         $total_prestado = $wpdb->get_var("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora')");
@@ -206,16 +198,10 @@ class LUD_Admin_Tesoreria {
         $dinero_fisico = floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado) - floatval($total_intereses_pagados);
 
         $recaudo_sec = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND fecha_recaudo >= %s",
-                $fecha_corte_caja
-            )
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria'"
         );
         $gasto_sec = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND fecha_gasto >= %s",
-                $fecha_corte_caja
-            )
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria'"
         );
         $fondo_secretaria = floatval($recaudo_sec) - floatval($gasto_sec);
         
@@ -345,14 +331,14 @@ class LUD_Admin_Tesoreria {
         
         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px;">
             <div class="lud-card" style="flex:1; min-width:300px; background:#2c3e50; color:#fff; cursor:help;" 
-                 title="AYUDA: Se calcula como Entradas desde enero - Gastos desde enero - Capital prestado - Intereses ya pagados. Representa el efectivo esperado en caja.">
+                 title="AYUDA: Se calcula como Entradas históricas - Gastos históricos - Capital prestado - Intereses ya pagados. Representa el efectivo esperado en caja.">
                 <h3 style="color:#bdc3c7; margin-top:0;">🏦 Dinero Total en Caja</h3>
                 <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($dinero_fisico, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">Arqueo físico total (Incluye Secretaría).</p>
             </div>
             
             <div class="lud-card" style="flex:1; min-width:300px; background:#27ae60; color:#fff; cursor:help;"
-                 title="AYUDA: Disponible para prestar = Dinero en caja - Fondo Secretaría (recaudo secretaría desde enero - gastos secretaría desde enero).">
+                 title="AYUDA: Disponible para prestar = Dinero en caja - Fondo Secretaría (recaudo secretaría histórico - gastos secretaría históricos).">
                 <h3 style="color:#a9dfbf; margin-top:0;">✅ Disponible para Prestar</h3>
                 <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($disponible_para_creditos, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">(Descontando $<?php echo number_format($fondo_secretaria); ?> de Secretaría)</p>
