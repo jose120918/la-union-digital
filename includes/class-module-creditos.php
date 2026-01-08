@@ -40,7 +40,11 @@ class LUD_Module_Creditos {
 
         // Dinero Físico desde el corte operativo (saldo base + movimientos nuevos).
         $entradas = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
             $fecha_corte_operativo
         ));
         $gastos = $wpdb->get_var($wpdb->prepare(
@@ -48,7 +52,11 @@ class LUD_Module_Creditos {
             $fecha_corte_operativo
         ));
         $prestado = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora') AND fecha_solicitud >= %s",
+            "SELECT SUM(saldo_actual)
+             FROM {$wpdb->prefix}fondo_creditos
+             WHERE estado IN ('activo', 'mora')
+               AND fecha_solicitud >= %s
+               AND (datos_entrega IS NULL OR datos_entrega NOT LIKE 'Importación%%')",
             $fecha_corte_operativo
         ));
         $intereses_pagados = $wpdb->get_var($wpdb->prepare(
@@ -59,7 +67,12 @@ class LUD_Module_Creditos {
         // Reservas que NO se pueden prestar (Secretaría)
         // Nota: Multas e Intereses SÍ se prestan durante el año.
         $recaudo_sec = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.concepto = 'cuota_secretaria'
+               AND rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
             $fecha_corte_operativo
         ));
         $gasto_sec = $wpdb->get_var($wpdb->prepare(
@@ -89,8 +102,13 @@ class LUD_Module_Creditos {
         // 1. Buscar si pagó alguna MULTA en los últimos 90 días
         $fecha_limite = date('Y-m-d', strtotime('-90 days'));
         $multas_recentes = $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}fondo_recaudos_detalle 
-             WHERE user_id = %d AND concepto = 'multa' AND fecha_recaudo >= %s", 
+            "SELECT COUNT(*)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.user_id = %d
+               AND rd.concepto = 'multa'
+               AND rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
             $user_id, $fecha_limite
         ));
 

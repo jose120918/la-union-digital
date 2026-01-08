@@ -181,8 +181,12 @@ class LUD_Admin_Tesoreria {
 
         // 1. CÁLCULOS DE CAJA (Dinero Físico Real)
         // Comentario: se parte del balance físico base de enero 2026 y se suman movimientos nuevos.
+        $filtro_no_importacion = "AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')";
         $total_entradas = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.fecha_recaudo >= %s {$filtro_no_importacion}",
             $fecha_corte_operativo
         ));
         $total_gastos = $wpdb->get_var($wpdb->prepare(
@@ -190,7 +194,11 @@ class LUD_Admin_Tesoreria {
             $fecha_corte_operativo
         ));
         $total_prestado = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora') AND fecha_solicitud >= %s",
+            "SELECT SUM(saldo_actual)
+             FROM {$wpdb->prefix}fondo_creditos
+             WHERE estado IN ('activo', 'mora')
+               AND fecha_solicitud >= %s
+               AND (datos_entrega IS NULL OR datos_entrega NOT LIKE 'Importación%%')",
             $fecha_corte_operativo
         ));
         // Salidas por Pago de Intereses (Liquidación anual desde el corte)
@@ -205,7 +213,11 @@ class LUD_Admin_Tesoreria {
         $dinero_fisico = $saldo_base_caja + floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado) - floatval($total_intereses_pagados);
 
         $recaudo_sec = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.concepto = 'cuota_secretaria'
+               AND rd.fecha_recaudo >= %s {$filtro_no_importacion}",
             $fecha_corte_operativo
         ));
         $gasto_sec = $wpdb->get_var($wpdb->prepare(
@@ -224,9 +236,11 @@ class LUD_Admin_Tesoreria {
         // 1. Intereses Totales Año en Curso (Rentabilidad)
         $inicio_anio_actual = $anio_actual . '-01-01';
         $intereses_ytd = $wpdb->get_var($wpdb->prepare("
-            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
-            WHERE concepto IN ('interes_credito', 'interes_mora_credito') 
-            AND fecha_recaudo >= %s
+            SELECT SUM(rd.monto)
+            FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+            LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+            WHERE rd.concepto IN ('interes_credito', 'interes_mora_credito')
+              AND rd.fecha_recaudo >= %s {$filtro_no_importacion}
         ", $inicio_anio_actual));
         if ( intval($anio_actual) === $anio_corte_operativo ) {
             $intereses_ytd = floatval($intereses_ytd) + floatval( defined( 'LUD_BASE_INTERESES_ANIO' ) ? LUD_BASE_INTERESES_ANIO : 0 );
@@ -234,9 +248,11 @@ class LUD_Admin_Tesoreria {
 
         // 2. Multas Año en Curso
         $multas_ytd = $wpdb->get_var($wpdb->prepare("
-            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
-            WHERE concepto = 'multa' 
-            AND fecha_recaudo >= %s
+            SELECT SUM(rd.monto)
+            FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+            LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+            WHERE rd.concepto = 'multa'
+              AND rd.fecha_recaudo >= %s {$filtro_no_importacion}
         ", $inicio_anio_actual));
         if ( intval($anio_actual) === $anio_corte_operativo ) {
             $multas_ytd = floatval($multas_ytd) + floatval( defined( 'LUD_BASE_MULTAS_ANIO' ) ? LUD_BASE_MULTAS_ANIO : 0 );
@@ -244,11 +260,13 @@ class LUD_Admin_Tesoreria {
 
         // 3. Caja Secretaría (Solo Mes Actual)
         // Lo que entró por concepto 'cuota_secretaria' este mes
-        $recaudo_sec_mes = $wpdb->get_var("
-            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
-            WHERE concepto = 'cuota_secretaria' 
-            AND MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual
-        ");
+        $recaudo_sec_mes = $wpdb->get_var($wpdb->prepare("
+            SELECT SUM(rd.monto)
+            FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+            LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+            WHERE rd.concepto = 'cuota_secretaria'
+              AND MONTH(rd.fecha_recaudo) = %d AND YEAR(rd.fecha_recaudo) = %d {$filtro_no_importacion}
+        ", $mes_actual, $anio_actual));
         // Lo que ya se le entregó (Gastó) a la secretaria este mes
         $pagado_sec_mes = $wpdb->get_var("
             SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos 
@@ -263,11 +281,13 @@ class LUD_Admin_Tesoreria {
         $meta_aporte_ideal = $total_acciones_activas * 51000; // 50k Ahorro + 1k Sec
         
         // Cuánto ha entrado realmente por Ahorro + Secretaría este mes
-        $recaudo_real_aporte = $wpdb->get_var("
-            SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
-            WHERE concepto IN ('ahorro', 'cuota_secretaria') 
-            AND MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual
-        ");
+        $recaudo_real_aporte = $wpdb->get_var($wpdb->prepare("
+            SELECT SUM(rd.monto)
+            FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+            LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+            WHERE rd.concepto IN ('ahorro', 'cuota_secretaria')
+              AND MONTH(rd.fecha_recaudo) = %d AND YEAR(rd.fecha_recaudo) = %d {$filtro_no_importacion}
+        ", $mes_actual, $anio_actual));
         
         $faltante_meta = $meta_aporte_ideal - floatval($recaudo_real_aporte);
         // Si ya superamos la meta (ej. pagos adelantados), mostramos 0, sino el negativo.
@@ -293,7 +313,12 @@ class LUD_Admin_Tesoreria {
         $cartera_mora = floatval( $wpdb->get_var("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado = 'mora'") );
         $porcentaje_mora = ($cartera_vigente > 0) ? round( ($cartera_mora / $cartera_vigente) * 100, 1 ) : 0;
 
-        $recaudo_mes_total = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE MONTH(fecha_recaudo) = $mes_actual AND YEAR(fecha_recaudo) = $anio_actual") );
+        $recaudo_mes_total = floatval( $wpdb->get_var($wpdb->prepare("
+            SELECT SUM(rd.monto)
+            FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+            LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+            WHERE MONTH(rd.fecha_recaudo) = %d AND YEAR(rd.fecha_recaudo) = %d {$filtro_no_importacion}
+        ", $mes_actual, $anio_actual)) );
         $gasto_mes_total = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE MONTH(fecha_gasto) = $mes_actual AND YEAR(fecha_gasto) = $anio_actual") );
 
         $creditos_pendientes_monto = floatval( $wpdb->get_var("SELECT SUM(monto_solicitado) FROM {$wpdb->prefix}fondo_creditos WHERE estado = 'pendiente_tesoreria'") );
@@ -1141,15 +1166,17 @@ class LUD_Admin_Tesoreria {
         $resumen = $wpdb->get_results("
             SELECT
                 YEAR(fecha_recaudo) AS anio,
-                SUM(CASE WHEN concepto = 'ahorro' THEN monto ELSE 0 END) AS total_ahorro,
-                SUM(CASE WHEN concepto = 'capital_credito' THEN monto ELSE 0 END) AS total_capital,
-                SUM(CASE WHEN concepto = 'interes_credito' THEN monto ELSE 0 END) AS total_interes,
-                SUM(CASE WHEN concepto = 'multa' THEN monto ELSE 0 END) AS total_multa,
-                SUM(CASE WHEN concepto = 'cuota_secretaria' THEN monto ELSE 0 END) AS total_secretaria,
-                SUM(CASE WHEN concepto = 'excedente' THEN monto ELSE 0 END) AS total_cuota_mixta
-            FROM {$wpdb->prefix}fondo_recaudos_detalle
-            WHERE YEAR(fecha_recaudo) >= 2026
-            GROUP BY YEAR(fecha_recaudo)
+                SUM(CASE WHEN rd.concepto = 'ahorro' THEN rd.monto ELSE 0 END) AS total_ahorro,
+                SUM(CASE WHEN rd.concepto = 'capital_credito' THEN rd.monto ELSE 0 END) AS total_capital,
+                SUM(CASE WHEN rd.concepto = 'interes_credito' THEN rd.monto ELSE 0 END) AS total_interes,
+                SUM(CASE WHEN rd.concepto = 'multa' THEN rd.monto ELSE 0 END) AS total_multa,
+                SUM(CASE WHEN rd.concepto = 'cuota_secretaria' THEN rd.monto ELSE 0 END) AS total_secretaria,
+                SUM(CASE WHEN rd.concepto = 'excedente' THEN rd.monto ELSE 0 END) AS total_cuota_mixta
+            FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+            LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+            WHERE YEAR(rd.fecha_recaudo) >= 2026
+              AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')
+            GROUP BY YEAR(rd.fecha_recaudo)
             ORDER BY anio DESC
         ");
         ?>

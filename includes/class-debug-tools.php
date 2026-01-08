@@ -989,7 +989,11 @@ class LUD_Debug_Tools {
 
         // Consultar valores reales desde el corte operativo
         $entradas = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
             $fecha_corte_operativo
         ));
         $gastos = $wpdb->get_var($wpdb->prepare(
@@ -997,7 +1001,11 @@ class LUD_Debug_Tools {
             $fecha_corte_operativo
         ));
         $prestado = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'pagado', 'mora') AND fecha_solicitud >= %s",
+            "SELECT SUM(saldo_actual)
+             FROM {$wpdb->prefix}fondo_creditos
+             WHERE estado IN ('activo', 'pagado', 'mora')
+               AND fecha_solicitud >= %s
+               AND (datos_entrega IS NULL OR datos_entrega NOT LIKE 'Importación%%')",
             $fecha_corte_operativo
         ));
         $intereses_pagados = $wpdb->get_var($wpdb->prepare(
@@ -1006,7 +1014,12 @@ class LUD_Debug_Tools {
         ));
 
         $recaudo_sec = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.concepto = 'cuota_secretaria'
+               AND rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
             $fecha_corte_operativo
         ));
         $gasto_sec = $wpdb->get_var($wpdb->prepare(
@@ -1730,7 +1743,11 @@ class LUD_Debug_Tools {
         $fecha_corte_operativo = defined( 'LUD_FECHA_CORTE_OPERATIVO' ) ? LUD_FECHA_CORTE_OPERATIVO : date( 'Y-01-01' );
 
         $entradas = floatval( $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
             $fecha_corte_operativo
         )) );
         $gastos = floatval( $wpdb->get_var($wpdb->prepare(
@@ -1738,11 +1755,20 @@ class LUD_Debug_Tools {
             $fecha_corte_operativo
         )) );
         $prestado = floatval( $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo','pagado','mora') AND fecha_solicitud >= %s",
+            "SELECT SUM(saldo_actual)
+             FROM {$wpdb->prefix}fondo_creditos
+             WHERE estado IN ('activo','pagado','mora')
+               AND fecha_solicitud >= %s
+               AND (datos_entrega IS NULL OR datos_entrega NOT LIKE 'Importación%%')",
             $fecha_corte_operativo
         )) );
         $recaudo_sec = floatval( $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND fecha_recaudo >= %s",
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.concepto = 'cuota_secretaria'
+               AND rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
             $fecha_corte_operativo
         )) );
         $gasto_sec = floatval( $wpdb->get_var($wpdb->prepare(
