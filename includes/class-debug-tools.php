@@ -7,6 +7,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+if ( ! class_exists( 'LUD_Debug_Tools' ) ) {
 class LUD_Debug_Tools {
 
     private $log = [];
@@ -982,26 +983,66 @@ class LUD_Debug_Tools {
         $this->header("CASO 5: Cálculo de Liquidez Real");
         global $wpdb;
         
-        // Consultar Valores Reales de la BD
-        $entradas = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle");
-        $gastos = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos");
-        $prestado = $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'pagado', 'mora')");
-        
-        $recaudo_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria'");
-        $gasto_sec = $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria'");
-        $reserva_sec = floatval($recaudo_sec) - floatval($gasto_sec);
+        $fecha_corte_operativo = defined( 'LUD_FECHA_CORTE_OPERATIVO' ) ? LUD_FECHA_CORTE_OPERATIVO : date( 'Y-01-01' );
+        $anio_corte_operativo = intval( date( 'Y', strtotime( $fecha_corte_operativo ) ) );
+
+        // Consultar valores reales desde el corte operativo
+        $entradas = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
+            $fecha_corte_operativo
+        ));
+        $gastos = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE fecha_gasto >= %s",
+            $fecha_corte_operativo
+        ));
+        $prestado = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(saldo_actual)
+             FROM {$wpdb->prefix}fondo_creditos
+             WHERE estado IN ('activo', 'pagado', 'mora')
+               AND fecha_solicitud >= %s
+               AND (datos_entrega IS NULL OR datos_entrega NOT LIKE 'Importación%%')",
+            $fecha_corte_operativo
+        ));
+        $intereses_pagados = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado' AND anio >= %d",
+            $anio_corte_operativo
+        ));
+
+        $recaudo_sec = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.concepto = 'cuota_secretaria'
+               AND rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
+            $fecha_corte_operativo
+        ));
+        $gasto_sec = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND fecha_gasto >= %s",
+            $fecha_corte_operativo
+        ));
+        $reserva_sec = floatval( defined( 'LUD_BASE_SECRETARIA' ) ? LUD_BASE_SECRETARIA : 0 )
+            + floatval($recaudo_sec) - floatval($gasto_sec);
 
         $liquidez_sistema = LUD_Module_Creditos::get_liquidez_disponible();
-        
-        $calculo_manual = floatval($entradas) - floatval($gastos) - floatval($prestado) - $reserva_sec;
 
-        $this->log("🔹 DESGLOSE DE CAJA (Valores Reales BD):");
-        $this->log("   (+) Total Entradas Históricas:  $ " . number_format($entradas));
-        $this->log("   (-) Total Gastos Históricos:    $ " . number_format($gastos));
-        $this->log("   (-) Total Créditos Aprobados:   $ " . number_format($prestado));
-        $this->log("   (=) Dinero Físico Bruto:        $ " . number_format($entradas - $gastos - $prestado));
+        $saldo_base_caja = floatval( defined( 'LUD_BASE_DISPONIBLE' ) ? LUD_BASE_DISPONIBLE : 0 )
+            + floatval( defined( 'LUD_BASE_SECRETARIA' ) ? LUD_BASE_SECRETARIA : 0 );
+
+        $calculo_manual = $saldo_base_caja + floatval($entradas) - floatval($gastos) - floatval($prestado) - floatval($intereses_pagados) - $reserva_sec;
+
+        $this->log("🔹 DESGLOSE DE CAJA (Desde el corte operativo):");
+        $this->log("   (+) Saldo base caja:            $ " . number_format($saldo_base_caja));
+        $this->log("   (+) Entradas desde el corte:    $ " . number_format($entradas));
+        $this->log("   (-) Gastos desde el corte:      $ " . number_format($gastos));
+        $this->log("   (-) Créditos nuevos:            $ " . number_format($prestado));
+        $this->log("   (-) Intereses pagados:          $ " . number_format($intereses_pagados));
         $this->log("   --------------------------------");
-        $this->log("   (-) Reserva Secretaría (Intocable): $ " . number_format($reserva_sec));
+        $this->log("   (-) Reserva Secretaría base+mov: $ " . number_format($reserva_sec));
         $this->log("   --------------------------------");
         $this->log("   (=) LIQUIDEZ PRESTABLE MANUAL:  $ " . number_format($calculo_manual));
         
@@ -1658,7 +1699,6 @@ class LUD_Debug_Tools {
         $wpdb->delete("{$wpdb->prefix}fondo_gastos", ['categoria' => 'test_dashboard', 'descripcion' => 'TEST KPIs Dashboard ' . $transaccion_prueba]);
     }
 
-
     // --- HELPER: RESUMEN FINANCIERO EXPRESS ---
     /**
      * Obtiene un resumen numérico del estado del fondo para validarlo en pruebas.
@@ -1667,11 +1707,41 @@ class LUD_Debug_Tools {
         // Devuelve un snapshot simple para validar el dashboard sin renderizarlo
         global $wpdb;
 
-        $entradas = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle") );
-        $gastos = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos") );
-        $prestado = floatval( $wpdb->get_var("SELECT SUM(monto_aprobado) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo','pagado','mora')") );
-        $recaudo_sec = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria'") );
-        $gasto_sec = floatval( $wpdb->get_var("SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria'") );
+        $fecha_corte_operativo = defined( 'LUD_FECHA_CORTE_OPERATIVO' ) ? LUD_FECHA_CORTE_OPERATIVO : date( 'Y-01-01' );
+
+        $entradas = floatval( $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
+            $fecha_corte_operativo
+        )) );
+        $gastos = floatval( $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE fecha_gasto >= %s",
+            $fecha_corte_operativo
+        )) );
+        $prestado = floatval( $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(saldo_actual)
+             FROM {$wpdb->prefix}fondo_creditos
+             WHERE estado IN ('activo','pagado','mora')
+               AND fecha_solicitud >= %s
+               AND (datos_entrega IS NULL OR datos_entrega NOT LIKE 'Importación%%')",
+            $fecha_corte_operativo
+        )) );
+        $recaudo_sec = floatval( $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(rd.monto)
+             FROM {$wpdb->prefix}fondo_recaudos_detalle rd
+             LEFT JOIN {$wpdb->prefix}fondo_transacciones tx ON rd.transaccion_id = tx.id
+             WHERE rd.concepto = 'cuota_secretaria'
+               AND rd.fecha_recaudo >= %s
+               AND (tx.metodo_pago IS NULL OR tx.metodo_pago <> 'importacion')",
+            $fecha_corte_operativo
+        )) );
+        $gasto_sec = floatval( $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND fecha_gasto >= %s",
+            $fecha_corte_operativo
+        )) );
 
         return [
             'entradas' => $entradas,
@@ -1726,4 +1796,5 @@ class LUD_Debug_Tools {
      * Marca un caso como fallido dentro del log.
      */
     private function fail($msg) { $this->log[] = "<span style='color:#f44336; font-weight:bold;'>❌ FAIL: $msg</span>"; }
+}
 }

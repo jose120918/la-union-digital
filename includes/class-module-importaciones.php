@@ -650,15 +650,14 @@ class LUD_Module_Importaciones {
             ) );
         }
 
-        if ( isset( $conceptos['ahorro'] ) ) {
-            $this->actualizar_fecha_ultimo_aporte( $user_id, $fecha );
-        }
+        // Comentario: los pagos importados no afectan el estado operativo ni la mora actual.
     }
 
     /**
      * Actualiza la fecha de último aporte si es mayor.
      */
     private function actualizar_fecha_ultimo_aporte( $user_id, $fecha ) {
+        // Comentario: función reservada para operaciones normales (no se usa en importaciones históricas).
         global $wpdb;
         $actual = $wpdb->get_var( $wpdb->prepare( "SELECT fecha_ultimo_aporte FROM {$wpdb->prefix}fondo_cuentas WHERE user_id = %d", $user_id ) );
         if ( ! $actual || $fecha > $actual ) {

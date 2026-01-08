@@ -27,6 +27,12 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.10:** se retiró la validación de ahorro base en LUD Tests para evitar errores fatales en entornos con duplicaciones.
+- **1.5.9:** se renombró la validación de ahorro base para evitar redeclaraciones en entornos con caché de archivos.
+- **1.5.8:** se protege la carga de `LUD_Debug_Tools` para evitar redeclaraciones en entornos con doble include.
+- **1.5.7:** la tarjeta de meta mensual muestra en tooltip los socios pendientes de recaudo del mes.
+- **1.5.6:** se excluyen importaciones históricas en los KPI operativos y liquidez para mantener intacto el balance base.
+- **1.5.5:** se definió un corte operativo desde enero 2026 con saldos base físicos (caja, secretaría, intereses y multas) y validación de ahorro histórico en LUD Tests.
 - **1.5.2:** tooltips del dashboard de Tesorería ahora explican la fórmula de cálculo de cada card.
 - **1.5.1:** redondeo hacia arriba a múltiplos de 1.000 en todos los valores de amortización, manteniendo el prorrateo unificado.
 - **1.5.0:** centralización del cálculo de amortización alemana para importaciones, desembolsos y PDFs, con prorrateo coherente en primera cuota.
@@ -104,8 +110,10 @@ Creación gestionada por `LUD_DB_Installer`:
 ## Panel de Tesorería
 Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):
 - **Dashboard general** (`view=dashboard`): KPIs de caja, intereses, multas, reservas de secretaría, disponibilidad para créditos, y paneles de aprobación. Incluye Caja Secretaría con el recaudo del mes y un histórico de entregas mensuales.
-  - La caja y el disponible para prestar se calculan con el recaudo del **año en curso** y el saldo vigente de créditos, evitando sumar años cerrados.
+  - La caja y el disponible para prestar parten de saldos base de enero 2026 y suman movimientos desde el corte operativo; la cartera vigente se calcula con créditos actuales.
+  - Los recaudos importados como históricos no afectan los KPI operativos ni la disponibilidad para prestar.
   - Cada card tiene tooltip con la fórmula de cálculo para transparencia operativa.
+  - La meta mensual indica cuántos socios están pendientes de aportar y muestra sus nombres en un tooltip discreto.
 - **Desembolsos y cierres:**
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
@@ -125,13 +133,14 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
 - **Presidencia** (`view=presidencia`): panel exclusivo para aprobar o rechazar solicitudes de ingreso pendientes, con motivo obligatorio al rechazar, historial de decisiones y acceso al PDF cargado por el solicitante.
 - **Control de asistencia** (`view=control_asistencia`): pestaña para marcar presentes/ausentes en la asamblea; los ausentes reciben una multa pendiente de $10.000 con detalle “Inasistencia Asamblea (fecha)”.
 - **Historial de intereses:** consulta de utilidades liquidadas (`view=historial_intereses`).
-- **Históricos anuales** (`view=historial_anual`): resumen anual por concepto (ahorro, capital, intereses, multas, secretaría y cuota mixta).
+- **Históricos anuales** (`view=historial_anual`): resumen anual por concepto (ahorro, capital, intereses, multas, secretaría y cuota mixta) desde 2026.
 - **Importaciones** (`view=importaciones`): carga masiva de socios y movimientos históricos, además de créditos vigentes desde XLSX con tabla de amortización.
 - **Configuración del fondo (solo administradores):** pestaña “⚙️ Configuración del Fondo” con dos bloques:
   - **Configurador de correos:** define URL de logo, enlaces de portal/políticas/actualización de datos, nombre de remitente y pie global de todos los correos automáticos.
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
 - **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
 - **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado). Los pagos sembrados se registran en el día 5 de cada mes y sincronizan `fecha_ultimo_aporte` con el último pago generado para evitar incoherencias de mora. “Limpiar Datos de Prueba” elimina únicamente esos usuarios y sus tablas relacionadas.
+- **Validación base operativa:** se retiró la validación automática para evitar errores en entornos con duplicaciones; puede validarse manualmente con un reporte SQL.
 - **Vista previa legal:** en “🧪 LUD Tests” puedes enviar a un correo indicado un contrato de mutuo y su pagaré con carta de instrucciones generados con TCPDF y datos ficticios (no crea desembolsos reales).
 - **Dashboard Tesorería:** lista de morosos ordenada A-Z, Caja Secretaría con recaudo del mes e histórico de entregas, y ficha de socio con fecha de incorporación y estado detallado de mora/al día.
   - La hoja de vida de socio muestra score crediticio, resumen de créditos activos y tabla de amortización desplegable.
