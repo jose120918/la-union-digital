@@ -335,14 +335,14 @@ class LUD_Admin_Tesoreria {
         
         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px;">
             <div class="lud-card" style="flex:1; min-width:300px; background:#2c3e50; color:#fff; cursor:help;" 
-                 title="AYUDA: Esta es la suma de todo el dinero que debería haber físicamente en la Caja Fuerte. Si el conteo físico dice otra cosa, hay un descuadre.">
+                 title="AYUDA: Se calcula como Entradas totales - Gastos totales - Capital prestado - Intereses ya pagados. Representa el efectivo esperado en caja.">
                 <h3 style="color:#bdc3c7; margin-top:0;">🏦 Dinero Total en Caja</h3>
                 <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($dinero_fisico, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">Arqueo físico total (Incluye Secretaría).</p>
             </div>
             
             <div class="lud-card" style="flex:1; min-width:300px; background:#27ae60; color:#fff; cursor:help;"
-                 title="AYUDA: Este es el dinero que REALMENTE puedes prestar. El sistema ya restó automáticamente la plata que es de la Secretaría, para que no la toques.">
+                 title="AYUDA: Disponible para prestar = Dinero en caja - Fondo Secretaría (recaudo secretaría del año - gastos secretaría del año).">
                 <h3 style="color:#a9dfbf; margin-top:0;">✅ Disponible para Prestar</h3>
                 <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($disponible_para_creditos, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">(Descontando $<?php echo number_format($fondo_secretaria); ?> de Secretaría)</p>
@@ -351,20 +351,20 @@ class LUD_Admin_Tesoreria {
 
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:30px;">
             
-            <div class="lud-card" style="border-bottom: 4px solid #2980b9;" title="Ayuda: Suma de intereses corrientes y mora cobrados en el año. Útil para Presidencia.">
+            <div class="lud-card" style="border-bottom: 4px solid #2980b9;" title="Ayuda: Suma anual de recaudos con concepto interes_credito + interes_mora_credito.">
                 <h4 style="margin:0; color:#7f8c8d;">📈 Intereses Ganados (Año)</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format(floatval($intereses_ytd), 0, ',', '.'); ?></div>
                 <small>Rentabilidad bruta del fondo.</small>
                 </div>
 
-            <div class="lud-card" style="border-bottom: 4px solid #c0392b;" title="Ayuda: Multas cobradas a socios por retrasos. Útil para Secretaría.">
+            <div class="lud-card" style="border-bottom: 4px solid #c0392b;" title="Ayuda: Suma anual de recaudos con concepto multa.">
                 <h4 style="margin:0; color:#7f8c8d;">⚖️ Multas (Año)</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#c0392b;">$ <?php echo number_format(floatval($multas_ytd), 0, ',', '.'); ?></div>
                 <small>Sanciones aplicadas.</small>
             </div>
 
             <?php $color_meta = ($indicador_meta < 0) ? '#c0392b' : '#111'; ?>
-            <div class="lud-card" style="border-bottom: 4px solid <?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;" title="Ayuda: Diferencia entre lo que debía recaudar el fondo este mes y lo recibido.">
+            <div class="lud-card" style="border-bottom: 4px solid <?php echo ($indicador_meta == 0) ? '#27ae60' : '#f39c12'; ?>;" title="Ayuda: Meta ideal = acciones activas x $51.000. Indicador = recaudo real (ahorro + secretaría del mes) - meta ideal; si falta, se muestra en negativo.">
                 <h4 style="margin:0; color:#7f8c8d;">🎯 Meta Mensual</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:<?php echo $color_meta; ?>;">
                     $ <?php echo number_format($indicador_meta, 0, ',', '.'); ?>
@@ -372,14 +372,14 @@ class LUD_Admin_Tesoreria {
                 <small><?php echo ($indicador_meta == 0) ? '✅ Meta Cumplida' : 'Falta recaudar en aportes'; ?></small>
             </div>
 
-            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Solo muestra lo recaudado para Secretaría en el mes en curso.">
+            <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Suma del mes actual con concepto cuota_secretaria (solo recaudos).">
                 <h4 style="margin:0; color:#e65100;">📂 Caja Secretaría (Recaudo Mes)</h4>
                 <div style="font-size:1.5rem; font-weight:bold; color:#ef6c00;">$ <?php echo number_format($recaudo_sec_mes, 0, ',', '.'); ?></div>
                 <small>Corresponde a las cuotas de secretaría registradas este mes.</small>
             </div>
         </div>
 
-        <div class="lud-card" style="border-left:4px solid #546e7a; margin-bottom:30px;" title="Histórico de entregas efectuadas a Secretaría por mes.">
+        <div class="lud-card" style="border-left:4px solid #546e7a; margin-bottom:30px;" title="Histórico: suma de gastos con categoría secretaria, agrupado por mes (últimos 6 meses).">
             <h3 style="margin-top:0;">📑 Histórico Entregas Secretaría</h3>
             <?php if ( empty( $historico_secretaria ) ): ?>
                 <p style="color:#666;">Sin registros de entregas.</p>
@@ -399,43 +399,43 @@ class LUD_Admin_Tesoreria {
         </div>
 
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px; margin-bottom:30px;">
-            <div class="lud-card" style="border-left: 4px solid #6c5ce7;" title="Ayuda: Saldo vivo de todos los créditos activos.">
+            <div class="lud-card" style="border-left: 4px solid #6c5ce7;" title="Ayuda: Suma de saldo_actual en créditos activos y en mora.">
                 <h4 style="margin:0; color:#7f8c8d;">💼 Cartera Vigente</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($cartera_vigente, 0, ',', '.'); ?></div>
                 <small>Saldo total de créditos activos y en seguimiento.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #d63031;" title="Ayuda: Valor de cartera que está en mora; indicador clave para Presidencia.">
+            <div class="lud-card" style="border-left: 4px solid #d63031;" title="Ayuda: Suma de saldo_actual en créditos con estado mora.">
                 <h4 style="margin:0; color:#7f8c8d;">🚨 Cartera en Mora</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#d63031;">$ <?php echo number_format($cartera_mora, 0, ',', '.'); ?></div>
                 <small><?php echo $porcentaje_mora; ?>% de la cartera vigente.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #16a085;" title="Ayuda: Todo lo recibido este mes (ahorros, créditos y multas).">
+            <div class="lud-card" style="border-left: 4px solid #16a085;" title="Ayuda: Suma del mes actual en recaudos detalle (todos los conceptos).">
                 <h4 style="margin:0; color:#7f8c8d;">📊 Recaudo del Mes</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($recaudo_mes_total, 0, ',', '.'); ?></div>
                 <small>Incluye ahorro, créditos y multas.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #e67e22;" title="Ayuda: Suma de pagos operativos hechos en el mes.">
+            <div class="lud-card" style="border-left: 4px solid #e67e22;" title="Ayuda: Suma del mes actual en gastos registrados (todas las categorías).">
                 <h4 style="margin:0; color:#7f8c8d;">💸 Gasto Operativo del Mes</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;">$ <?php echo number_format($gasto_mes_total, 0, ',', '.'); ?></div>
                 <small>Pagos ya egresados del fondo.</small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #009688;" title="Ayuda: Porcentaje de cumplimiento de aportes obligatorios en el mes.">
+            <div class="lud-card" style="border-left: 4px solid #009688;" title="Ayuda: Cumplimiento = (recaudo real ahorro+secretaría del mes / meta ideal) x 100.">
                 <h4 style="margin:0; color:#7f8c8d;">🎯 Cumplimiento Aportes</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;"><?php echo $porcentaje_cumplimiento; ?>%</div>
                 <small><?php echo ($porcentaje_cumplimiento >= 100) ? 'Meta alcanzada' : 'Seguimos recolectando.'; ?></small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #27ae60;" title="Ayuda: Solicitudes listas para desembolsar; prioriza según saldo disponible.">
+            <div class="lud-card" style="border-left: 4px solid #27ae60;" title="Ayuda: Conteo y suma de monto_solicitado en créditos con estado pendiente_tesoreria.">
                 <h4 style="margin:0; color:#7f8c8d;">🧮 Créditos en Cola</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#111;"><?php echo $creditos_pendientes_total; ?> solicitudes</div>
                 <small>Por desembolsar: $ <?php echo number_format($creditos_pendientes_monto, 0, ',', '.'); ?></small>
             </div>
 
-            <div class="lud-card" style="border-left: 4px solid #2d3436;" title="Ayuda: Total de socios activos y lista breve de alertas por mora.">
+            <div class="lud-card" style="border-left: 4px solid #2d3436;" title="Ayuda: Total de socios con estado activo y conteo de alertas por mora/aportes vencidos.">
                 <h4 style="margin:0; color:#7f8c8d;">👥 Socios Activos</h4>
                 <div style="font-size:1.8rem; font-weight:bold; color:#2d3436;"><?php echo $socios_activos; ?></div>
                 <?php 
@@ -1758,43 +1758,6 @@ class LUD_Admin_Tesoreria {
     }
 
     /**
-     * Calcula la fecha de la primera cuota según estatutos (día 5 del mes correspondiente).
-     */
-    private function calcular_fecha_primera_cuota( $fecha_inicio, $tipo_credito ) {
-        try {
-            $fecha = new DateTime( $fecha_inicio );
-        } catch ( Exception $e ) {
-            return current_time( 'Y-m-d' );
-        }
-
-        $meses = $tipo_credito === 'agil' ? 1 : 2;
-        $fecha->modify( "+{$meses} months" );
-        $fecha->setDate( $fecha->format( 'Y' ), $fecha->format( 'm' ), 5 );
-
-        return $fecha->format( 'Y-m-d' );
-    }
-
-    /**
-     * Calcula interés prorrateado por días para la primera cuota.
-     */
-    private function calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento ) {
-        try {
-            $inicio = new DateTime( $fecha_inicio );
-            $vencimiento = new DateTime( $fecha_vencimiento );
-        } catch ( Exception $e ) {
-            return round( $saldo * ( $tasa / 100 ), 2 );
-        }
-
-        $dias = (int) $inicio->diff( $vencimiento )->format( '%a' );
-        if ( $dias <= 0 ) {
-            return round( $saldo * ( $tasa / 100 ), 2 );
-        }
-
-        $factor_diario = ( $tasa / 100 ) / 30;
-        return round( $saldo * $factor_diario * $dias, 2 );
-    }
-
-    /**
      * Genera la tabla de amortización para un crédito (corriente o ágil).
      */
     private function generar_tabla_amortizacion($credito_id) {
@@ -1804,43 +1767,28 @@ class LUD_Admin_Tesoreria {
         $monto = floatval($credito->monto_solicitado);
         $plazo = intval($credito->plazo_meses);
         $tasa = floatval($credito->tasa_interes);
-        
-        $capital_mensual_base = round($monto / $plazo, 2);
-        $suma_capitales = $capital_mensual_base * $plazo;
-        $diferencia = $monto - $suma_capitales;
-        $saldo = $monto;
-
         $fecha_inicio = $credito->fecha_aprobacion ?: $credito->fecha_solicitud;
         if ( ! $fecha_inicio ) {
             $fecha_inicio = current_time( 'mysql' );
         }
-        $fecha_base = $this->calcular_fecha_primera_cuota( $fecha_inicio, $credito->tipo_credito );
+        $resultado_amortizacion = LUD_Amortizacion::construir_tabla_amortizacion(
+            $monto,
+            $tasa,
+            $plazo,
+            $fecha_inicio,
+            $credito->tipo_credito
+        );
 
-        for ($i = 1; $i <= $plazo; $i++) {
-            $fecha_vencimiento = $fecha_base;
-            if ($i > 1) {
-                $fecha = new DateTime( $fecha_base );
-                $fecha->modify("+" . ($i - 1) . " months");
-                $fecha->setDate($fecha->format('Y'), $fecha->format('m'), 5);
-                $fecha_vencimiento = $fecha->format( 'Y-m-d' );
-            }
-            $capital_cuota = $capital_mensual_base;
-            if ( $i == $plazo ) $capital_cuota += $diferencia;
-            $interes_cuota = $i === 1
-                ? $this->calcular_interes_prorrateado( $saldo, $tasa, $fecha_inicio, $fecha_vencimiento )
-                : round( $saldo * ( $tasa / 100 ), 2 );
-            $valor_cuota_total = $capital_cuota + $interes_cuota;
-
+        foreach ( $resultado_amortizacion['cuotas'] as $cuota ) {
             $wpdb->insert( $tabla_amort, [
-                'credito_id' => $credito_id, 'numero_cuota' => $i,
-                'fecha_vencimiento' => $fecha_vencimiento,
-                'capital_programado' => $capital_cuota,
-                'interes_programado' => $interes_cuota,
-                'valor_cuota_total' => $valor_cuota_total,
+                'credito_id' => $credito_id,
+                'numero_cuota' => $cuota['numero'],
+                'fecha_vencimiento' => $cuota['fecha_vencimiento'],
+                'capital_programado' => $cuota['capital'],
+                'interes_programado' => $cuota['interes'],
+                'valor_cuota_total' => $cuota['total'],
                 'estado' => 'pendiente'
             ]);
-
-            $saldo -= $capital_cuota;
         }
     }
 
