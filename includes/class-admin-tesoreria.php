@@ -173,41 +173,47 @@ class LUD_Admin_Tesoreria {
     private function render_dashboard_general() {
         global $wpdb;
         $anio_actual = date('Y');
+        $fecha_corte_operativo = defined( 'LUD_FECHA_CORTE_OPERATIVO' ) ? LUD_FECHA_CORTE_OPERATIVO : date( 'Y-01-01' );
+        $anio_corte_operativo = intval( date( 'Y', strtotime( $fecha_corte_operativo ) ) );
         
         // SEGURIDAD: Definir si el usuario puede editar (Tesorero/Admin/Presidente)
         $puede_editar = current_user_can('lud_manage_tesoreria');
 
         // 1. CÁLCULOS DE CAJA (Dinero Físico Real)
-        // Entradas (solo año actual para no sumar históricos de años cerrados).
+        // Comentario: se parte del balance físico base de enero 2026 y se suman movimientos nuevos.
         $total_entradas = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE YEAR(fecha_recaudo) = %d",
-            $anio_actual
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE fecha_recaudo >= %s",
+            $fecha_corte_operativo
         ));
-        // Salidas Operativas (solo año actual).
         $total_gastos = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE YEAR(fecha_gasto) = %d",
-            $anio_actual
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE fecha_gasto >= %s",
+            $fecha_corte_operativo
         ));
-        // Salidas por Créditos (saldo vigente real).
-        $total_prestado = $wpdb->get_var("SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora')");
-        // Salidas por Pago de Intereses (Liquidación Diciembre del año actual)
-        // Al liquidar, el dinero sale de la caja para entregarse al socio. Debemos restarlo.
+        $total_prestado = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(saldo_actual) FROM {$wpdb->prefix}fondo_creditos WHERE estado IN ('activo', 'mora') AND fecha_solicitud >= %s",
+            $fecha_corte_operativo
+        ));
+        // Salidas por Pago de Intereses (Liquidación anual desde el corte)
         $total_intereses_pagados = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado' AND anio = %d",
-            $anio_actual
+            "SELECT SUM(utilidad_asignada) FROM {$wpdb->prefix}fondo_utilidades_mensuales WHERE estado = 'liquidado' AND anio >= %d",
+            $anio_corte_operativo
         ));
 
-        $dinero_fisico = floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado) - floatval($total_intereses_pagados);
+        $saldo_base_caja = floatval( defined( 'LUD_BASE_DISPONIBLE' ) ? LUD_BASE_DISPONIBLE : 0 )
+            + floatval( defined( 'LUD_BASE_SECRETARIA' ) ? LUD_BASE_SECRETARIA : 0 );
+
+        $dinero_fisico = $saldo_base_caja + floatval($total_entradas) - floatval($total_gastos) - floatval($total_prestado) - floatval($total_intereses_pagados);
 
         $recaudo_sec = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND YEAR(fecha_recaudo) = %d",
-            $anio_actual
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle WHERE concepto = 'cuota_secretaria' AND fecha_recaudo >= %s",
+            $fecha_corte_operativo
         ));
         $gasto_sec = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND YEAR(fecha_gasto) = %d",
-            $anio_actual
+            "SELECT SUM(monto) FROM {$wpdb->prefix}fondo_gastos WHERE categoria = 'secretaria' AND fecha_gasto >= %s",
+            $fecha_corte_operativo
         ));
-        $fondo_secretaria = floatval($recaudo_sec) - floatval($gasto_sec);
+        $fondo_secretaria = floatval( defined( 'LUD_BASE_SECRETARIA' ) ? LUD_BASE_SECRETARIA : 0 )
+            + floatval($recaudo_sec) - floatval($gasto_sec);
         
         $disponible_para_creditos = $dinero_fisico - $fondo_secretaria;
 
@@ -216,19 +222,25 @@ class LUD_Admin_Tesoreria {
         $anio_actual = date('Y');
 
         // 1. Intereses Totales Año en Curso (Rentabilidad)
-        // Sumamos interés corriente y la nueva mora del 4% [cite: 181]
-        $intereses_ytd = $wpdb->get_var("
+        $inicio_anio_actual = $anio_actual . '-01-01';
+        $intereses_ytd = $wpdb->get_var($wpdb->prepare("
             SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
             WHERE concepto IN ('interes_credito', 'interes_mora_credito') 
-            AND YEAR(fecha_recaudo) = $anio_actual
-        ");
+            AND fecha_recaudo >= %s
+        ", $inicio_anio_actual));
+        if ( intval($anio_actual) === $anio_corte_operativo ) {
+            $intereses_ytd = floatval($intereses_ytd) + floatval( defined( 'LUD_BASE_INTERESES_ANIO' ) ? LUD_BASE_INTERESES_ANIO : 0 );
+        }
 
         // 2. Multas Año en Curso
-        $multas_ytd = $wpdb->get_var("
+        $multas_ytd = $wpdb->get_var($wpdb->prepare("
             SELECT SUM(monto) FROM {$wpdb->prefix}fondo_recaudos_detalle 
             WHERE concepto = 'multa' 
-            AND YEAR(fecha_recaudo) = $anio_actual
-        ");
+            AND fecha_recaudo >= %s
+        ", $inicio_anio_actual));
+        if ( intval($anio_actual) === $anio_corte_operativo ) {
+            $multas_ytd = floatval($multas_ytd) + floatval( defined( 'LUD_BASE_MULTAS_ANIO' ) ? LUD_BASE_MULTAS_ANIO : 0 );
+        }
 
         // 3. Caja Secretaría (Solo Mes Actual)
         // Lo que entró por concepto 'cuota_secretaria' este mes
@@ -335,14 +347,14 @@ class LUD_Admin_Tesoreria {
         
         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px;">
             <div class="lud-card" style="flex:1; min-width:300px; background:#2c3e50; color:#fff; cursor:help;" 
-                 title="AYUDA: Se calcula como Entradas totales - Gastos totales - Capital prestado - Intereses ya pagados. Representa el efectivo esperado en caja.">
+                 title="AYUDA: Saldo base enero 2026 + Entradas desde el corte - Gastos desde el corte - Créditos nuevos - Intereses ya pagados. Representa el efectivo esperado en caja.">
                 <h3 style="color:#bdc3c7; margin-top:0;">🏦 Dinero Total en Caja</h3>
                 <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($dinero_fisico, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">Arqueo físico total (Incluye Secretaría).</p>
             </div>
             
             <div class="lud-card" style="flex:1; min-width:300px; background:#27ae60; color:#fff; cursor:help;"
-                 title="AYUDA: Disponible para prestar = Dinero en caja - Fondo Secretaría (recaudo secretaría del año - gastos secretaría del año).">
+                 title="AYUDA: Disponible para prestar = Dinero en caja - Fondo Secretaría (base enero 2026 + recaudo desde el corte - gastos desde el corte).">
                 <h3 style="color:#a9dfbf; margin-top:0;">✅ Disponible para Prestar</h3>
                 <div style="font-size:2.5rem; font-weight:bold; color:#111;">$ <?php echo number_format($disponible_para_creditos, 0, ',', '.'); ?></div>
                 <p style="opacity:0.8;">(Descontando $<?php echo number_format($fondo_secretaria); ?> de Secretaría)</p>
@@ -1136,13 +1148,14 @@ class LUD_Admin_Tesoreria {
                 SUM(CASE WHEN concepto = 'cuota_secretaria' THEN monto ELSE 0 END) AS total_secretaria,
                 SUM(CASE WHEN concepto = 'excedente' THEN monto ELSE 0 END) AS total_cuota_mixta
             FROM {$wpdb->prefix}fondo_recaudos_detalle
+            WHERE YEAR(fecha_recaudo) >= 2026
             GROUP BY YEAR(fecha_recaudo)
             ORDER BY anio DESC
         ");
         ?>
         <div class="lud-card">
             <h3>🧮 Históricos Anuales del Fondo</h3>
-            <p>Este resumen consolida el recaudo por año. La liquidación de intereses se calcula año a año y no mezcla periodos anteriores en el cálculo vigente.</p>
+            <p>Este resumen consolida el recaudo por año desde 2026. La liquidación de intereses se calcula año a año y no mezcla periodos anteriores en el cálculo vigente.</p>
 
             <table class="widefat striped">
                 <thead>
