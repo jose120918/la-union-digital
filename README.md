@@ -27,6 +27,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.8:** se protege la carga de `LUD_Debug_Tools` para evitar redeclaraciones en entornos con doble include.
 - **1.5.7:** la tarjeta de meta mensual muestra en tooltip los socios pendientes de recaudo del mes.
 - **1.5.6:** se excluyen importaciones históricas en los KPI operativos y liquidez para mantener intacto el balance base.
 - **1.5.5:** se definió un corte operativo desde enero 2026 con saldos base físicos (caja, secretaría, intereses y multas) y validación de ahorro histórico en LUD Tests.
