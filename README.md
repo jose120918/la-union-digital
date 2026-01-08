@@ -27,6 +27,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.3:** el arqueo de caja y la disponibilidad para préstamos ahora usan el histórico completo de recaudos y gastos para evitar desfases interanuales.
 - **1.5.2:** tooltips del dashboard de Tesorería ahora explican la fórmula de cálculo de cada card.
 - **1.5.1:** redondeo hacia arriba a múltiplos de 1.000 en todos los valores de amortización, manteniendo el prorrateo unificado.
 - **1.5.0:** centralización del cálculo de amortización alemana para importaciones, desembolsos y PDFs, con prorrateo coherente en primera cuota.
@@ -104,7 +105,7 @@ Creación gestionada por `LUD_DB_Installer`:
 ## Panel de Tesorería
 Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles con `lud_view_tesoreria`):
 - **Dashboard general** (`view=dashboard`): KPIs de caja, intereses, multas, reservas de secretaría, disponibilidad para créditos, y paneles de aprobación. Incluye Caja Secretaría con el recaudo del mes y un histórico de entregas mensuales.
-  - La caja y el disponible para prestar se calculan con el recaudo del **año en curso** y el saldo vigente de créditos, evitando sumar años cerrados.
+  - La caja y el disponible para prestar se calculan con el **histórico completo** de recaudos/gastos y el saldo vigente de créditos, asegurando que el arqueo refleje todo el fondo acumulado.
   - Cada card tiene tooltip con la fórmula de cálculo para transparencia operativa.
 - **Desembolsos y cierres:**
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
