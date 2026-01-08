@@ -27,6 +27,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.9:** se renombró la validación de ahorro base para evitar redeclaraciones en entornos con caché de archivos.
 - **1.5.8:** se protege la carga de `LUD_Debug_Tools` para evitar redeclaraciones en entornos con doble include.
 - **1.5.7:** la tarjeta de meta mensual muestra en tooltip los socios pendientes de recaudo del mes.
 - **1.5.6:** se excluyen importaciones históricas en los KPI operativos y liquidez para mantener intacto el balance base.
