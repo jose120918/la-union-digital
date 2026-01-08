@@ -27,6 +27,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.10:** se retiró la validación de ahorro base en LUD Tests para evitar errores fatales en entornos con duplicaciones.
 - **1.5.9:** se renombró la validación de ahorro base para evitar redeclaraciones en entornos con caché de archivos.
 - **1.5.8:** se protege la carga de `LUD_Debug_Tools` para evitar redeclaraciones en entornos con doble include.
 - **1.5.7:** la tarjeta de meta mensual muestra en tooltip los socios pendientes de recaudo del mes.
@@ -139,7 +140,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - **LUD Test:** formulario para enviar un correo de prueba y validar la plantilla/SMPP activo.
 - **Avisos visuales compactos:** las alertas de éxito/error en shortcodes (pagos, ahorro, simulador, retiros) usan tipografía reducida y colores suaves para no distraer al usuario.
 - **Seeding de datos de prueba:** en “🧪 LUD Tests” (solo administradores técnicos) hay botones para “Sembrar Datos de Prueba” (crea 33 socios con ahorros, créditos, moras controladas e historial simulado). Los pagos sembrados se registran en el día 5 de cada mes y sincronizan `fecha_ultimo_aporte` con el último pago generado para evitar incoherencias de mora. “Limpiar Datos de Prueba” elimina únicamente esos usuarios y sus tablas relacionadas.
-- **Validación base operativa:** LUD Tests verifica que el ahorro acumulado 2024–enero 2026 coincida con el valor base configurado.
+- **Validación base operativa:** se retiró la validación automática para evitar errores en entornos con duplicaciones; puede validarse manualmente con un reporte SQL.
 - **Vista previa legal:** en “🧪 LUD Tests” puedes enviar a un correo indicado un contrato de mutuo y su pagaré con carta de instrucciones generados con TCPDF y datos ficticios (no crea desembolsos reales).
 - **Dashboard Tesorería:** lista de morosos ordenada A-Z, Caja Secretaría con recaudo del mes e histórico de entregas, y ficha de socio con fecha de incorporación y estado detallado de mora/al día.
   - La hoja de vida de socio muestra score crediticio, resumen de créditos activos y tabla de amortización desplegable.
