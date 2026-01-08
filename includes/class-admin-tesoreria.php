@@ -232,6 +232,7 @@ class LUD_Admin_Tesoreria {
         // --- INICIO: NUEVOS CÁLCULOS KPI ---
         $mes_actual = date('m');
         $anio_actual = date('Y');
+        $fecha_inicio_mes = $anio_actual . '-' . $mes_actual . '-01';
 
         // 1. Intereses Totales Año en Curso (Rentabilidad)
         $inicio_anio_actual = $anio_actual . '-01-01';
@@ -288,6 +289,20 @@ class LUD_Admin_Tesoreria {
             WHERE rd.concepto IN ('ahorro', 'cuota_secretaria')
               AND MONTH(rd.fecha_recaudo) = %d AND YEAR(rd.fecha_recaudo) = %d {$filtro_no_importacion}
         ", $mes_actual, $anio_actual));
+
+        // Socios con aporte pendiente para la meta mensual.
+        $socios_pendientes_aporte = $wpdb->get_results($wpdb->prepare("
+            SELECT u.display_name
+            FROM {$wpdb->prefix}fondo_cuentas c
+            JOIN {$wpdb->users} u ON c.user_id = u.ID
+            WHERE c.estado_socio = 'activo'
+              AND (c.fecha_ultimo_aporte IS NULL OR c.fecha_ultimo_aporte < %s)
+            ORDER BY u.display_name ASC
+        ", $fecha_inicio_mes));
+        $nombres_pendientes = array_map( function( $socio ) { return $socio->display_name; }, $socios_pendientes_aporte );
+        $detalle_pendientes = ! empty( $nombres_pendientes ) ? implode( ', ', $nombres_pendientes ) : 'Sin pendientes';
+        $detalle_pendientes_tooltip = esc_attr( $detalle_pendientes );
+        $total_pendientes = count( $nombres_pendientes );
         
         $faltante_meta = $meta_aporte_ideal - floatval($recaudo_real_aporte);
         // Si ya superamos la meta (ej. pagos adelantados), mostramos 0, sino el negativo.
@@ -406,7 +421,14 @@ class LUD_Admin_Tesoreria {
                 <div style="font-size:1.8rem; font-weight:bold; color:<?php echo $color_meta; ?>;">
                     $ <?php echo number_format($indicador_meta, 0, ',', '.'); ?>
                 </div>
-                <small><?php echo ($indicador_meta == 0) ? '✅ Meta Cumplida' : 'Falta recaudar en aportes'; ?></small>
+                <small>
+                    <?php if ( $indicador_meta == 0 ) : ?>
+                        ✅ Meta Cumplida
+                    <?php else : ?>
+                        Falta recaudar en aportes (<?php echo $total_pendientes; ?>)
+                        <span title="Pendientes del mes: <?php echo $detalle_pendientes_tooltip; ?>" style="margin-left:6px; cursor:help;">ℹ️</span>
+                    <?php endif; ?>
+                </small>
             </div>
 
             <div class="lud-card" style="background:#fff3e0; border:1px solid #ffe0b2;" title="Ayuda: Suma del mes actual con concepto cuota_secretaria (solo recaudos).">

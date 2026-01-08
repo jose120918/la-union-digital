@@ -27,6 +27,7 @@ Plugin de WordPress para administrar el fondo de inversión **La Unión**. Centr
 - `assets/css/lud-style.css`: estilos compartidos para tarjetas, formularios y listados.
 
 ## Historial de versiones
+- **1.5.7:** la tarjeta de meta mensual muestra en tooltip los socios pendientes de recaudo del mes.
 - **1.5.6:** se excluyen importaciones históricas en los KPI operativos y liquidez para mantener intacto el balance base.
 - **1.5.5:** se definió un corte operativo desde enero 2026 con saldos base físicos (caja, secretaría, intereses y multas) y validación de ahorro histórico en LUD Tests.
 - **1.5.2:** tooltips del dashboard de Tesorería ahora explican la fórmula de cálculo de cada card.
@@ -109,6 +110,7 @@ Implementado en `LUD_Admin_Tesoreria` (menú “💰 Tesorería” para roles co
   - La caja y el disponible para prestar parten de saldos base de enero 2026 y suman movimientos desde el corte operativo; la cartera vigente se calcula con créditos actuales.
   - Los recaudos importados como históricos no afectan los KPI operativos ni la disponibilidad para prestar.
   - Cada card tiene tooltip con la fórmula de cálculo para transparencia operativa.
+  - La meta mensual indica cuántos socios están pendientes de aportar y muestra sus nombres en un tooltip discreto.
 - **Desembolsos y cierres:**
   - Aprobación/rechazo de pagos (`admin_post_lud_aprobar_pago`, `lud_rechazar_pago`).
   - Desembolso de créditos (`admin_post_lud_aprobar_desembolso`).
